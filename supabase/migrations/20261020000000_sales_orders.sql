@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS public.sales_order_items (
   line_total numeric(14,2) NOT NULL CHECK (line_total >= 0),
   created_at timestamptz NOT NULL DEFAULT now()
 );
-GRANT SELECT, INSERT, UPDATE ON public.sales_orders TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sales_orders TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.sales_order_items TO authenticated;
 ALTER TABLE public.sales_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales_order_items ENABLE ROW LEVEL SECURITY;
@@ -62,3 +62,7 @@ CREATE INDEX IF NOT EXISTS sales_orders_created_by_created_at_idx ON public.sale
 CREATE INDEX IF NOT EXISTS sales_order_items_order_id_idx ON public.sales_order_items(order_id);
 CREATE TRIGGER update_sales_orders_updated_at BEFORE UPDATE ON public.sales_orders
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP POLICY IF EXISTS "Users delete own draft orders" ON public.sales_orders;
+CREATE POLICY "Users delete own draft orders" ON public.sales_orders
+  FOR DELETE TO authenticated USING (created_by = auth.uid() AND status = 'Draft');
