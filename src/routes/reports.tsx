@@ -1,229 +1,91 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { AppShell, Pill, SectionTitle, StatCard } from "@/components/AppShell";
-import { currentUser, orders, payments, products, salesByCategory, salesByDay, stockStatus, topProducts } from "@/lib/mock-data";
-import { money } from "@/lib/format";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2, TrendingUp, Wallet, Package, ShoppingBag } from "lucide-react";
+import { AppShell, EmptyState, SectionTitle, StatCard } from "@/components/AppShell";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { money, shortDate } from "@/lib/format";
 
 export const Route = createFileRoute("/reports")({
-  head: () => ({
-    meta: [
-      { title: "Reports — RSS Sales Manager" },
-      {
-        name: "description",
-        content:
-          "Daily, weekly and monthly sales, collections, inventory value and target achievement for the RSS field team.",
-      },
-      { property: "og:title", content: "Reports — RSS Sales Manager" },
-      {
-        property: "og:description",
-        content: "Sales, collections, inventory and profit reporting for reps and management.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "Reports — RSS Sales Manager" }] }),
   component: ReportsPage,
 });
 
-const chartColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
-
 function ReportsPage() {
-  const [view, setView] = useState<"Rep" | "Admin">("Rep");
+  const { session } = useAuth();
+  const ordersQuery = useQuery({
+    queryKey: ["orders"],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("sales_orders")
+        .select("id, order_no, customer_name, status, total, payment_received, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const receiptsQuery = useQuery({
+    queryKey: ["receipts"],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("payment_receipts")
+        .select("id, receipt_no, amount, paid_at, customer_name")
+        .order("paid_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const productsQuery = useQuery({
+    queryKey: ["products"],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("products")
+        .select("id, name, sku, stock, sales_price, min_stock, is_active")
+        .eq("is_active", true);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
-  const todaySales = 187_500;
-  const weekSales = salesByDay.reduce((s, d) => s + d.sales, 0);
-  const monthSales = currentUser.achieved;
-  const achievement = Math.round((currentUser.achieved / currentUser.target) * 100);
-  const collections = payments.reduce((s, p) => s + p.amount, 0);
-  const stockValue = products.reduce((s, p) => s + p.stock * p.salesPrice, 0);
-  const cogs = 1_744_000;
-  const grossProfit = monthSales - cogs - 42_500;
+  if (!session) return <AppShell title="Reports"><div className="surface-card p-4">Sign in to see reports based on your saved business records.</div></AppShell>;
+  if (ordersQuery.isLoading || receiptsQuery.isLoading || productsQuery.isLoading) return <div className="grid min-h-screen place-items-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  const error = ordersQuery.error ?? receiptsQuery.error ?? productsQuery.error;
+  if (error) return <AppShell title="Reports"><div className="surface-card p-4 text-sm text-destructive">Report data could not be loaded: {(error as Error).message}</div></AppShell>;
 
-  return (
-    <AppShell
-      title="Reports"
-      subtitle={view === "Rep" ? "Your performance" : "Company overview"}
-      action={
-        <div className="flex rounded-xl bg-white/10 p-1">
-          {(["Rep", "Admin"] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`h-9 flex-1 rounded-lg text-xs font-bold ${
-                view === v ? "bg-primary text-primary-foreground" : "text-navy-foreground/70"
-              }`}
-            >
-              {v === "Rep" ? "My dashboard" : "Admin dashboard"}
-            </button>
-          ))}
-        </div>
-      }
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Today's Sales" value={money(todaySales)} hint="2 orders" />
-        <StatCard label="Today's Collections" value={money(50_000)} hint="1 payment" tone="success" />
-        <StatCard label="Weekly Sales" value={money(weekSales)} />
-        <StatCard label="Monthly Sales" value={money(monthSales)} />
-      </div>
+  const orders = ordersQuery.data ?? [];
+  const receipts = receiptsQuery.data ?? [];
+  const products = productsQuery.data ?? [];
+  const now = new Date();
+  const today = now.toISOString().slice(0,10);
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate()-6);
+  const weekStartText = weekStart.toISOString().slice(0,10);
+  const activeOrders = orders.filter(o => !["Cancelled","Returned","Draft"].includes(o.status));
+  const todayOrders = activeOrders.filter(o => o.created_at.slice(0,10)===today);
+  const weekOrders = activeOrders.filter(o => o.created_at.slice(0,10)>=weekStartText);
+  const todayReceipts = receipts.filter(r => r.paid_at.slice(0,10)===today);
+  const sales = activeOrders.reduce((sum,o)=>sum+Number(o.total||0),0);
+  const collected = receipts.reduce((sum,r)=>sum+Number(r.amount||0),0);
+  const todayCollected = todayReceipts.reduce((sum,r)=>sum+Number(r.amount||0),0);
+  const stockValue = products.reduce((sum,p)=>sum+Number(p.stock||0)*Number(p.sales_price||0),0);
+  const lowStock = products.filter(p=>Number(p.stock||0)<=Number(p.min_stock||0));
+  const balance = activeOrders.reduce((sum,o)=>sum+Math.max(0,Number(o.total||0)-Number(o.payment_received||0)),0);
 
-      {view === "Rep" ? (
-        <>
-          <SectionTitle>Monthly target</SectionTitle>
-          <div className="surface-card p-4">
-            <div className="flex items-end justify-between">
-              <div>
-                <p className="num text-2xl font-bold">{achievement}%</p>
-                <p className="text-xs text-muted-foreground">
-                  {money(currentUser.achieved)} of {money(currentUser.target)}
-                </p>
-              </div>
-              <Pill tone={achievement >= 100 ? "success" : achievement >= 70 ? "warning" : "danger"}>
-                {achievement >= 100 ? "Target met" : "In progress"}
-              </Pill>
-            </div>
-            <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-secondary">
-              <div
-                className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.min(100, achievement)}%` }}
-              />
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
-          <SectionTitle>Company totals</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Outstanding Receivables" value={money(995_400)} tone="danger" />
-            <StatCard label="Payments Collected" value={money(collections)} tone="success" />
-            <StatCard label="Inventory Value" value={money(stockValue)} />
-            <StatCard label="Gross Profit" value={money(grossProfit)} tone="success" hint="Revenue − COGS − discounts" />
-          </div>
-        </>
-      )}
-
-      <SectionTitle>Sales by day</SectionTitle>
-      <div className="surface-card p-3 pr-4">
-        <ResponsiveContainer width="100%" height={190}>
-          <BarChart data={salesByDay} margin={{ top: 6, right: 0, left: -18, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="day" tickLine={false} axisLine={false} fontSize={11} stroke="var(--muted-foreground)" />
-            <YAxis
-              tickFormatter={(v: number) => `${v / 1000}K`}
-              tickLine={false}
-              axisLine={false}
-              fontSize={11}
-              stroke="var(--muted-foreground)"
-            />
-            <Tooltip
-              formatter={(v: number) => money(v)}
-              contentStyle={{
-                borderRadius: 12,
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-                fontSize: 12,
-              }}
-            />
-            <Bar dataKey="sales" fill="var(--chart-1)" radius={[6, 6, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <SectionTitle>Sales by category</SectionTitle>
-      <div className="surface-card flex items-center gap-3 p-3">
-        <ResponsiveContainer width="45%" height={150}>
-          <PieChart>
-            <Pie data={salesByCategory} dataKey="value" nameKey="category" innerRadius={34} outerRadius={60} paddingAngle={2}>
-              {salesByCategory.map((_, i) => (
-                <Cell key={i} fill={chartColors[i % chartColors.length]} />
-              ))}
-            </Pie>
-            <Tooltip
-              formatter={(v: number) => money(v)}
-              contentStyle={{
-                borderRadius: 12,
-                border: "1px solid var(--border)",
-                background: "var(--card)",
-                fontSize: 12,
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-        <ul className="flex-1 space-y-1.5">
-          {salesByCategory.map((c, i) => (
-            <li key={c.category} className="flex items-center gap-2 text-xs">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ background: chartColors[i % chartColors.length] }}
-              />
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">{c.category}</span>
-              <span className="num font-semibold">{money(c.value, { compact: true })}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <SectionTitle>Top products</SectionTitle>
-      <ul className="surface-card divide-y divide-border">
-        {topProducts.map((p) => (
-          <li key={p.name} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{p.name}</p>
-              <p className="num text-xs text-muted-foreground">{p.units} units</p>
-            </div>
-            <p className="num shrink-0 text-sm font-semibold">{money(p.value)}</p>
-          </li>
-        ))}
-      </ul>
-
-      <SectionTitle>Inventory alerts</SectionTitle>
-      <ul className="space-y-2">
-        {products
-          .filter((p) => stockStatus(p) !== "IN STOCK")
-          .map((p) => (
-            <li key={p.id} className="surface-card flex items-center justify-between gap-3 p-3.5">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{p.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  Stock {p.stock} · Min {p.minStock}
-                </p>
-              </div>
-              <Pill tone={stockStatus(p) === "LOW STOCK" ? "warning" : "danger"}>{stockStatus(p)}</Pill>
-            </li>
-          ))}
-      </ul>
-
-      <SectionTitle>Orders</SectionTitle>
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Total orders" value={String(orders.length)} />
-        <StatCard
-          label="Confirmed"
-          value={String(orders.filter((o) => o.status === "Confirmed").length)}
-          tone="success"
-        />
-        <StatCard
-          label="Pending / Draft"
-          value={String(orders.filter((o) => o.status === "Draft" || o.status === "Pending").length)}
-          tone="warning"
-        />
-        <StatCard
-          label="Cancelled"
-          value={String(orders.filter((o) => o.status === "Cancelled").length)}
-        />
-      </div>
-
-      <p className="mt-4 text-center text-[11px] text-muted-foreground">
-        Export as Excel, CSV or PDF — respects your role permissions.
-      </p>
-    </AppShell>
-  );
+  return <AppShell title="Reports" subtitle="Calculated from saved database records">
+    <div className="grid grid-cols-2 gap-3">
+      <StatCard label="Today's sales" value={money(todayOrders.reduce((s,o)=>s+Number(o.total||0),0))} hint={todayOrders.length+" orders"} />
+      <StatCard label="Today's receipts" value={money(todayCollected)} hint={todayReceipts.length+" receipts"} tone="success" />
+      <StatCard label="Last 7 days" value={money(weekOrders.reduce((s,o)=>s+Number(o.total||0),0))} hint={weekOrders.length+" orders"} />
+      <StatCard label="All-time order value" value={money(sales)} hint={activeOrders.length+" orders"} />
+      <StatCard label="Recorded receipts" value={money(collected)} hint={receipts.length+" receipts"} tone="success" />
+      <StatCard label="Unpaid order balance" value={money(balance)} hint="Based on order payments recorded" tone={balance>0?"danger":"success"} />
+      <StatCard label="Inventory value" value={money(stockValue)} hint={products.length+" active products"} />
+      <StatCard label="Low / out of stock" value={String(lowStock.length)} tone={lowStock.length?"warning":"success"} />
+    </div>
+    <SectionTitle>Recent orders</SectionTitle>
+    {orders.length===0 ? <EmptyState title="No sales data yet" hint="Create an order to start building accurate reports. Demo charts and example totals have been removed." /> : <ul className="surface-card divide-y divide-border">{orders.slice(0,10).map(o=><li key={o.id} className="flex items-center justify-between gap-3 p-3.5"><div className="min-w-0"><p className="truncate text-sm font-semibold">{o.customer_name}</p><p className="text-xs text-muted-foreground">{o.order_no} · {shortDate(o.created_at)} · {o.status}</p></div><p className="num shrink-0 text-sm font-bold">{money(Number(o.total||0))}</p></li>)}</ul>}
+    <SectionTitle>Inventory attention</SectionTitle>
+    {lowStock.length===0 ? <EmptyState title="No low-stock alerts" hint="Alerts will appear when saved product quantities are at or below minimum stock." /> : <ul className="space-y-2">{lowStock.map(p=><li key={p.id} className="surface-card flex items-center justify-between gap-3 p-3.5"><div className="min-w-0"><p className="truncate text-sm font-semibold">{p.name}</p><p className="text-xs text-muted-foreground">{p.sku} · Minimum {p.min_stock}</p></div><p className="num text-sm font-bold">{p.stock} in stock</p></li>)}</ul>}
+    <div className="surface-card mt-4 p-3 text-xs text-muted-foreground"><TrendingUp className="mr-1 inline h-4 w-4" /> Reports contain only saved records. Profit reporting is not shown until cost and invoice data can be reliably joined to real orders.</div>
+  </AppShell>;
 }
