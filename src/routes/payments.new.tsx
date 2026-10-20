@@ -1,12 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, ReceiptText } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Pill, SectionTitle } from "@/components/AppShell";
-import { billsByCustomer, customers } from "@/lib/mock-data";
+import { SectionTitle } from "@/components/AppShell";
 import { money } from "@/lib/format";
 
 export const Route = createFileRoute("/payments/new")({
@@ -42,11 +42,18 @@ function CollectPaymentPage() {
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
 
-  const customer = useMemo(() => customers.find((c) => c.id === customerId), [customerId]);
-  const openBills = useMemo(
-    () => (customerId ? (billsByCustomer[customerId] ?? []).filter((b) => b.status !== "PAID") : []),
-    [customerId],
-  );
+  const customersQuery = useQuery({
+    queryKey: ["customers"],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("customers")
+        .select("id, shop_name, contact_person, phone, category, credit_limit, area")
+        .order("shop_name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const customer = (customersQuery.data ?? []).find((c) => c.id === customerId);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -58,7 +65,7 @@ function CollectPaymentPage() {
         .from("payment_receipts")
         .insert({
           customer_id: customer.id,
-          customer_name: customer.company,
+          customer_name: customer.shop_name,
           invoice_no: invoiceNo || null,
           amount: value,
           method,
@@ -143,69 +150,25 @@ function CollectPaymentPage() {
           className={selectClass}
         >
           <option value="">Select a customer…</option>
-          {customers.map((c) => (
+          {(customersQuery.data ?? []).map((c) => (
             <option key={c.id} value={c.id}>
-              {c.company} — {money(c.outstanding)} due
+              {c.shop_name} — {c.category}
             </option>
           ))}
         </select>
 
         {customer ? (
-          <div className="surface-card mt-3 flex items-center justify-between gap-3 p-3.5">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{customer.company}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {customer.id} · {customer.paymentTerms}
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="num text-sm font-bold text-destructive">
-                {money(customer.outstanding)}
-              </p>
-              <p className="text-[11px] text-muted-foreground">outstanding</p>
-            </div>
+          <div className="surface-card mt-3 p-3.5">
+            <p className="truncate text-sm font-semibold">{customer.shop_name}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {[customer.contact_person, customer.phone, customer.area].filter(Boolean).join(" · ")}
+            </p>
           </div>
         ) : null}
-
         {customerId ? (
           <>
-            <SectionTitle>Allocate to bill</SectionTitle>
-            <div className="space-y-2">
-              <button
-                onClick={() => setInvoiceNo("")}
-                className={`surface-card flex w-full items-center justify-between gap-3 p-3.5 text-left ${
-                  invoiceNo === "" ? "ring-2 ring-primary" : ""
-                }`}
-              >
-                <span className="text-sm font-medium">Advance / general receipt</span>
-                <Pill tone="info">No bill</Pill>
-              </button>
-              {openBills.map((b) => (
-                <button
-                  key={b.invoiceNo}
-                  onClick={() => {
-                    setInvoiceNo(b.invoiceNo);
-                    setAmount(String(b.total - b.paid));
-                  }}
-                  className={`surface-card flex w-full items-center justify-between gap-3 p-3.5 text-left ${
-                    invoiceNo === b.invoiceNo ? "ring-2 ring-primary" : ""
-                  }`}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{b.invoiceNo}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {b.date} · {money(b.total)} billed
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <span className="num block text-sm font-semibold text-destructive">
-                      {money(b.total - b.paid)}
-                    </span>
-                    <Pill tone={b.status === "PARTIAL" ? "warning" : "danger"}>{b.status}</Pill>
-                  </span>
-                </button>
-              ))}
-            </div>
+            <SectionTitle>Invoice reference</SectionTitle>
+            <p className="text-xs text-muted-foreground">Enter the actual invoice number if this receipt is for a specific invoice. No sample bills are shown.</p>
           </>
         ) : null}
 
