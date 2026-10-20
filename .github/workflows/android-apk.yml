@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      APP_URL: ${{ inputs.app_url || vars.RSS_SALES_APP_URL }}
+      APP_URL: ${{ inputs.app_url || vars.RSS_SALES_APP_URL || 'https://rssapps.net' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
           cd android-wrapper
           cat > capacitor.config.json <<EOF
           {
-            "appId": "eu.cc.rsscctvsolution.sal esmanager",
+            "appId": "eu.cc.rsscctvsolution.salesmanager",
             "appName": "RSS Sales Manager",
             "webDir": "www",
             "server": {
@@ -73,8 +73,6 @@ jobs:
             }
           }
           EOF
-          # Ensure the Android application ID contains no whitespace.
-          sed -i 's/eu.cc.rsscctvsolution.sal esmanager/eu.cc.rsscctvsolution.salesmanager/' capacitor.config.json
           mkdir -p www
           printf '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' > www/index.html
           npx cap add android
