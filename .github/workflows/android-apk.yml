@@ -1,0 +1,95 @@
+name: Build RSS Sales Manager APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "Deployed RSS Sales Manager HTTPS URL"
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      APP_URL: ${{ inputs.app_url || vars.RSS_SALES_APP_URL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate deployed app URL
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::error::Set repository variable RSS_SALES_APP_URL to the deployed HTTPS URL, then run this workflow."
+            exit 1
+          fi
+          case "$APP_URL" in
+            https://*) ;;
+            *) echo "::error::APP_URL must start with https://"; exit 1 ;;
+          esac
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Capacitor tooling
+        run: |
+          npm install --global @capacitor/cli
+          mkdir -p android-wrapper
+          cd android-wrapper
+          npm init -y
+          npm install @capacitor/core @capacitor/android
+
+      - name: Generate Android WebView wrapper
+        run: |
+          cd android-wrapper
+          cat > capacitor.config.json <<EOF
+          {
+            "appId": "eu.cc.rsscctvsolution.sal esmanager",
+            "appName": "RSS Sales Manager",
+            "webDir": "www",
+            "server": {
+              "url": "$APP_URL",
+              "cleartext": false,
+              "androidScheme": "https"
+            }
+          }
+          EOF
+          # Ensure the Android application ID contains no whitespace.
+          sed -i 's/eu.cc.rsscctvsolution.sal esmanager/eu.cc.rsscctvsolution.salesmanager/' capacitor.config.json
+          mkdir -p www
+          printf '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>' > www/index.html
+          npx cap add android
+          npx cap sync android
+
+      - name: Build debug APK
+        run: |
+          cd android-wrapper/android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rss-sales-manager-apk
+          path: android-wrapper/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
