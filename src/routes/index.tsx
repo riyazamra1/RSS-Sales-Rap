@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Phone, MessageCircle, Plus, Users, Loader2 } from "lucide-react";
+import { Search, Phone, MessageCircle, Plus, Loader2 } from "lucide-react";
 import { AppShell, Pill, StatCard, SectionTitle, EmptyState } from "@/components/AppShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
