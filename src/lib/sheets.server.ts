@@ -75,11 +75,26 @@ export async function runSheetsSync(supabase: Client, userId: string): Promise<S
   const spreadsheetId = (settings.sheets_spreadsheet_id ?? "").trim();
   if (!spreadsheetId) throw new Error("Add a spreadsheet ID in App settings first.");
 
-  const [customers, products, payments] = await Promise.all([
+  const [customers, products, payments, orders] = await Promise.all([
     supabase.from("customers").select("*").order("created_at", { ascending: false }),
     supabase.from("products").select("*").order("name"),
     supabase.from("payment_receipts").select("*").order("paid_at", { ascending: false }),
+    supabase.from("sales_orders").select("*").order("created_at", { ascending: false }),
   ]);
+  if (customers.error) throw customers.error;
+  if (products.error) throw products.error;
+  if (payments.error) throw payments.error;
+  if (orders.error) throw orders.error;
+
+  const orderIds = (orders.data ?? []).map(o => o.id);
+  const orderItems = orderIds.length
+    ? await supabase.from("sales_order_items").select("*").in("order_id", orderIds)
+    : { data: [], error: null };
+  if (orderItems.error) throw orderItems.error;
+  const itemsByOrder = new Map<string, typeof orderItems.data>();
+  for (const item of orderItems.data ?? []) {
+    itemsByOrder.set(item.order_id, [...(itemsByOrder.get(item.order_id) ?? []), item]);
+  }
 
   const { data: costs } = await supabase.from("product_costs").select("product_id, purchase_price");
   const costMap = new Map<string, number>((costs ?? []).map((c) => [c.product_id, Number(c.purchase_price)]));
@@ -104,6 +119,19 @@ export async function runSheetsSync(supabase: Client, userId: string): Promise<S
           costMap.get(p.id) ?? 0, p.wholesale_price, p.sales_price, p.stock, p.min_stock,
           p.is_active ? "Yes" : "No",
         ]),
+      ],
+    },
+    {
+      tab: settings.sheets_orders_tab || "Orders",
+      rows: [
+        ["Order no", "Invoice no", "Order date", "Customer ID", "Customer", "Status", "Subtotal", "Discount", "Other charges", "Total", "Payment received", "Balance", "Created by", "SKU", "Product", "Quantity", "Unit price", "Line discount", "Line total", "Note"],
+        ...(orders.data ?? []).flatMap((o): Row[] => {
+          const items = itemsByOrder.get(o.id) ?? [];
+          const base = [o.order_no, o.invoice_no ?? "", o.created_at, o.customer_id, o.customer_name, o.status, o.subtotal, o.discount, o.other_charges, o.total, o.payment_received, Math.max(0, Number(o.total) - Number(o.payment_received)), o.created_by];
+          return items.length
+            ? items.map((item): Row => [...base, item.sku, item.product_name, item.quantity, item.unit_price, item.discount, item.line_total])
+            : [[...base, "", "", "", "", "", "", o.note ?? ""]];
+        }),
       ],
     },
     {
