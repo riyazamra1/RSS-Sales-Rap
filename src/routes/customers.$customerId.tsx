@@ -53,8 +53,8 @@ function CustomerDetail() {
   const c = customerQuery.data;
   const orders = ordersQuery.data ?? [];
   const receipts = receiptsQuery.data ?? [];
-  const orderBalance = orders.reduce((sum,o)=>sum+Math.max(0,Number(o.total||0)-Number(o.payment_received||0)),0);
   const totalReceipts = receipts.reduce((sum,r)=>sum+Number(r.amount||0),0);
+  const orderBalance = Math.max(0, orders.reduce((sum,o)=>sum+Number(o.total||0)-Number(o.payment_received||0),0)-totalReceipts);
   const creditLimit = Number(c.credit_limit||0);
   const available = creditLimit-orderBalance;
   const phone = c.phone ?? "";
