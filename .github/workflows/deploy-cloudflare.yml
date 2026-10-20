@@ -21,6 +21,8 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -33,9 +35,20 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Provide non-secret example environment
+      - name: Configure production Supabase environment
+        shell: bash
         run: |
-          if [ -f .env.example ] && [ ! -f .env ]; then cp .env.example .env; fi
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY GitHub Actions secret. The example environment uses placeholders and cannot connect to Supabase."
+            exit 1
+          fi
+          if [[ "$VITE_SUPABASE_URL" == *"your-project-ref"* ]] || [[ "$VITE_SUPABASE_PUBLISHABLE_KEY" == *"replace-me"* ]]; then
+            echo "::error::Supabase secrets still contain example placeholder values."
+            exit 1
+          fi
+          printf 'VITE_SUPABASE_URL=%s\nVITE_SUPABASE_PUBLISHABLE_KEY=%s\nSUPABASE_URL=%s\nSUPABASE_PUBLISHABLE_KEY=%s\n' \
+            "$VITE_SUPABASE_URL" "$VITE_SUPABASE_PUBLISHABLE_KEY" \
+            "$VITE_SUPABASE_URL" "$VITE_SUPABASE_PUBLISHABLE_KEY" > .env
 
       - name: Typecheck
         run: bun run typecheck
