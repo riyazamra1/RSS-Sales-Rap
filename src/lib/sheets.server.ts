@@ -58,6 +58,11 @@ async function writeTab(spreadsheetId: string, tab: string, rows: Row[]) {
   );
 }
 
+async function readTab(spreadsheetId: string, tab: string): Promise<unknown[][]> {
+  const result = await gateway(`/spreadsheets/${spreadsheetId}/values/${tab}!A1:Z10000`);
+  return Array.isArray(result.values) ? result.values : [];
+}
+
 export async function runSheetsSync(supabase: Client, userId: string): Promise<SheetsSyncResult> {
   const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
   if (!roles?.some((r) => r.role === "admin")) {
@@ -74,6 +79,39 @@ export async function runSheetsSync(supabase: Client, userId: string): Promise<S
 
   const spreadsheetId = (settings.sheets_spreadsheet_id ?? "").trim();
   if (!spreadsheetId) throw new Error("Add a spreadsheet ID in App settings first.");
+
+  // Read manager edits before exporting, otherwise a full-sheet refresh could erase them.
+  const ordersTab = settings.sheets_orders_tab || "Orders";
+  await ensureTabs(spreadsheetId, [ordersTab]);
+  const sheetRows = await readTab(spreadsheetId, ordersTab);
+  if (sheetRows.length > 1) {
+    const header = sheetRows[0].map(value => String(value ?? "").trim());
+    const orderNoIndex = header.indexOf("Order no");
+    const invoiceIndex = header.indexOf("Invoice no");
+    const statusIndex = header.indexOf("Status");
+    if (orderNoIndex >= 0 && statusIndex >= 0) {
+      const { data: knownOrders, error: knownOrdersError } = await supabase
+        .from("sales_orders").select("id, order_no, invoice_no, status");
+      if (knownOrdersError) throw knownOrdersError;
+      const byOrderNo = new Map((knownOrders ?? []).map(order => [order.order_no, order]));
+      const allowedStatuses = new Set(["Draft", "Pending", "Confirmed", "Processing", "Completed", "Cancelled", "Returned", "INVOICED"]);
+      for (const row of sheetRows.slice(1)) {
+        const orderNo = String(row[orderNoIndex] ?? "").trim();
+        const status = String(row[statusIndex] ?? "").trim();
+        const existing = byOrderNo.get(orderNo);
+        if (!existing || !allowedStatuses.has(status)) continue;
+        const patch: { status: string; invoice_no?: string | null } = { status };
+        if (status === "INVOICED") {
+          const sheetInvoice = invoiceIndex >= 0 ? String(row[invoiceIndex] ?? "").trim() : "";
+          patch.invoice_no = sheetInvoice || existing.invoice_no || orderNo.replace(/^ORD-/, "INV-");
+        }
+        if (existing.status !== patch.status || (patch.invoice_no !== undefined && existing.invoice_no !== patch.invoice_no)) {
+          const { error } = await supabase.from("sales_orders").update(patch).eq("id", existing.id);
+          if (error) throw error;
+        }
+      }
+    }
+  }
 
   const [customers, products, payments, orders] = await Promise.all([
     supabase.from("customers").select("*").order("created_at", { ascending: false }),
