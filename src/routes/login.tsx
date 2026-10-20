@@ -31,10 +31,30 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
 
   useEffect(() => {
     if (session) void navigate({ to: "/", replace: true });
   }, [session, navigate]);
+
+  async function onForgotPassword() {
+    const address = email.trim();
+    if (!address) {
+      toast.error("Enter your email address first.");
+      return;
+    }
+    if (resetBusy) return;
+    setResetBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(address, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setResetBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("If an account exists for this email, a password reset link will be sent.");
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -115,6 +135,16 @@ function LoginPage() {
             </div>
           </div>
 
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void onForgotPassword()}
+              disabled={resetBusy}
+              className="text-xs font-semibold text-primary underline-offset-4 hover:underline disabled:opacity-60"
+            >
+              {resetBusy ? "Sending reset link…" : "Forgot password?"}
+            </button>
+          </div>
           <button
             type="submit"
             disabled={busy}
