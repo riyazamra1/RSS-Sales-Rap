@@ -213,7 +213,7 @@ function NewOrderPage() {
           <button disabled={saveOrder.isPending || !selectedCustomer || !lines.length} onClick={() => saveOrder.mutate("Draft")} className="h-12 rounded-xl bg-secondary font-bold disabled:opacity-40">{saveOrder.isPending ? "Saving…" : "Save draft"}</button>
           <button disabled={saveOrder.isPending || !selectedCustomer || !lines.length} onClick={() => saveOrder.mutate("Pending")} className="h-12 rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-40"><ShoppingCart className="mr-1 inline h-4 w-4" />{saveOrder.isPending ? "Submitting…" : "Submit order"}</button>
         </div>
-        <p className="text-xs text-muted-foreground">Submitted orders are saved to the database with status Pending for admin review. Inventory is not changed until the order is processed.</p>
+        <p className="text-xs text-muted-foreground">Submitted orders are saved with status Pending for admin review. Stock is deducted when the admin marks the order INVOICED.</p>
       </section>
     </AppShell>
   );
