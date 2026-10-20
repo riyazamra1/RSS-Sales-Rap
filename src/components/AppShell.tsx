@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Bell, Wifi } from "lucide-react";
+import { Bell } from "lucide-react";
 import { BottomNav } from "./BottomNav";
 import { useAppSettings } from "@/hooks/useAppSettings";
 
@@ -41,17 +41,12 @@ export function AppShell({
 
 
             <div className="flex shrink-0 items-center gap-2">
-              <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium">
-                <Wifi className="h-3.5 w-3.5 text-success" />
-                Online
-              </span>
               <Link
                 to="/account"
                 className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10"
                 aria-label="Notifications"
               >
                 <Bell className="h-4.5 w-4.5" />
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-warning" />
               </Link>
             </div>
           </div>
