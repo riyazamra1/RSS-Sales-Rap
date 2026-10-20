@@ -85,7 +85,7 @@ export async function runSheetsSync(supabase: Client, userId: string): Promise<S
   await ensureTabs(spreadsheetId, [ordersTab]);
   const sheetRows = await readTab(spreadsheetId, ordersTab);
   if (sheetRows.length > 1) {
-    const header = sheetRows[0].map(value => String(value ?? "").trim());
+    const header = (sheetRows[0] ?? []).map(value => String(value ?? "").trim());
     const orderNoIndex = header.indexOf("Order no");
     const invoiceIndex = header.indexOf("Invoice no");
     const statusIndex = header.indexOf("Status");
