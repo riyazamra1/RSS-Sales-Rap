@@ -74,8 +74,8 @@ function CustomersPage() {
       .sort((a, b) => b.outstanding - a.outstanding);
   }, [query, filter]);
 
-  const totalOutstanding = customers.reduce((s, c) => s + c.outstanding, 0);
-  const overLimit = customers.filter((c) => c.outstanding > c.creditLimit).length;
+  const savedCustomerCount = saved.length;
+  const combinedCreditLimit = saved.reduce((sum, c) => sum + Number(c.credit_limit ?? 0), 0);
 
   return (
     <AppShell
@@ -95,16 +95,14 @@ function CustomersPage() {
     >
       <div className="grid grid-cols-2 gap-3">
         <StatCard
-          label="Total Outstanding"
-          value={money(totalOutstanding)}
-          hint="Across all accounts"
-          tone="danger"
+          label="Saved customers"
+          value={String(savedCustomerCount)}
+          hint="Live database records"
         />
         <StatCard
-          label="Over Credit Limit"
-          value={String(overLimit)}
-          hint="Needs approval"
-          tone="warning"
+          label="Combined credit limits"
+          value={money(combinedCreditLimit)}
+          hint="Across saved accounts"
         />
       </div>
 
