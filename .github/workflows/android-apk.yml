@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      APP_URL: ${{ inputs.app_url || vars.RSS_SALES_APP_URL || 'https://rssapps.net' }}
+      APP_URL: ${{ inputs.app_url || vars.RSS_SALES_APP_URL || 'https://rssapps.net/SalesManager' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
