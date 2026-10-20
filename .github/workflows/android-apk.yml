@@ -63,7 +63,7 @@ jobs:
           cd android-wrapper
           cat > capacitor.config.json <<EOF
           {
-            "appId": "eu.cc.rsscctvsolution.salesmanager",
+            "appId": "com.rss.salesmanager",
             "appName": "RSS Sales Manager",
             "webDir": "www",
             "server": {
