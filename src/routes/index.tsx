@@ -155,6 +155,7 @@ function CustomersPage() {
                   <p className="num mt-0.5 text-xs text-muted-foreground">
                     Credit limit {money(Number(c.credit_limit ?? 0))}
                   </p>
+                  <Link to="/customers/$customerId" params={{ customerId: c.id }} className="mt-1 inline-block text-xs font-semibold text-primary">Open customer profile</Link>
                 </div>
                 {c.phone ? (
                   <a
