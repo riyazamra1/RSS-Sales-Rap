@@ -69,7 +69,7 @@ function ReportsPage() {
   const todayCollected = todayReceipts.reduce((sum,r)=>sum+Number(r.amount||0),0);
   const stockValue = products.reduce((sum,p)=>sum+Number(p.stock||0)*Number(p.sales_price||0),0);
   const lowStock = products.filter(p=>Number(p.stock||0)<=Number(p.min_stock||0));
-  const balance = activeOrders.reduce((sum,o)=>sum+Math.max(0,Number(o.total||0)-Number(o.payment_received||0)),0);
+  const balance = Math.max(0, activeOrders.reduce((sum,o)=>sum+Number(o.total||0)-Number(o.payment_received||0),0)-collected);
 
   return <AppShell title="Reports" subtitle="Calculated from saved database records">
     <div className="grid grid-cols-2 gap-3">
