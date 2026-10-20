@@ -161,6 +161,18 @@ export type Database = {
         }
         Relationships: []
       }
+      sales_orders: {
+        Row: { id: string; order_no: string; invoice_no: string | null; customer_id: string; customer_name: string; created_by: string; status: string; subtotal: number; discount: number; other_charges: number; total: number; payment_received: number; note: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; order_no?: string; invoice_no?: string | null; customer_id: string; customer_name: string; created_by: string; status?: string; subtotal?: number; discount?: number; other_charges?: number; total?: number; payment_received?: number; note?: string | null; created_at?: string; updated_at?: string }
+        Update: { id?: string; order_no?: string; invoice_no?: string | null; customer_id?: string; customer_name?: string; created_by?: string; status?: string; subtotal?: number; discount?: number; other_charges?: number; total?: number; payment_received?: number; note?: string | null; created_at?: string; updated_at?: string }
+        Relationships: []
+      }
+      sales_order_items: {
+        Row: { id: string; order_id: string; product_id: string; product_name: string; sku: string; quantity: number; unit_price: number; discount: number; line_total: number; created_at: string }
+        Insert: { id?: string; order_id: string; product_id: string; product_name: string; sku: string; quantity: number; unit_price: number; discount?: number; line_total: number; created_at?: string }
+        Update: { id?: string; order_id?: string; product_id?: string; product_name?: string; sku?: string; quantity?: number; unit_price?: number; discount?: number; line_total?: number; created_at?: string }
+        Relationships: []
+      }
       payment_receipts: {
         Row: {
           amount: number
