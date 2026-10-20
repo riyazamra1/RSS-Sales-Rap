@@ -41,7 +41,7 @@ function AccountPage() {
   const { session, profile, isAdmin, signOut } = useAuth();
   const { settings } = useAppSettings();
 
-  const achievement = Math.round((currentUser.achieved / currentUser.target) * 100);
+  const achievement = currentUser.target > 0 ? Math.round((currentUser.achieved / currentUser.target) * 100) : 0;
   const commission = Math.round((currentUser.achieved * currentUser.commissionRate) / 100);
 
   const displayName = profile?.full_name || currentUser.name;
