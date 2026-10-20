@@ -45,8 +45,9 @@ function LoginPage() {
     }
     if (resetBusy) return;
     setResetBusy(true);
+    const appBase = window.location.pathname.startsWith("/SalesManager") ? "/SalesManager" : "";
     const { error } = await supabase.auth.resetPasswordForEmail(address, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${window.location.origin}${appBase}/reset-password`,
     });
     setResetBusy(false);
     if (error) {
