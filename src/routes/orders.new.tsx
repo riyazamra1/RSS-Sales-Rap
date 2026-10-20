@@ -1,667 +1,220 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Plus, Minus, Trash2, Loader2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, Check, Minus, Plus, ScanLine, Search, Trash2 } from "lucide-react";
-import { AppShell, EmptyState, Pill, SectionTitle } from "@/components/AppShell";
-import { customers, products, type Customer, type Product } from "@/lib/mock-data";
+import { AppShell, EmptyState, SectionTitle } from "@/components/AppShell";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { money } from "@/lib/format";
 
 export const Route = createFileRoute("/orders/new")({
-  head: () => ({
-    meta: [
-      { title: "New Order — RSS Sales Manager" },
-      {
-        name: "description",
-        content:
-          "Fast three-step order entry: pick the customer, add products, take payment and confirm on the spot.",
-      },
-      { property: "og:title", content: "New Order — RSS Sales Manager" },
-      {
-        property: "og:description",
-        content: "Field order entry with credit checks, price types and instant totals.",
-      },
-    ],
-  }),
+  head: () => ({ meta: [{ title: "New Order — RSS Sales Manager" }] }),
   component: NewOrderPage,
 });
 
-type PriceType = "Sales" | "Wholesale" | "Custom";
-type Line = { product: Product; qty: number; unitPrice: number; priceType: PriceType; discount: number };
+type CustomerRow = {
+  id: string; shop_name: string; contact_person: string; phone: string;
+  category: string; credit_limit: number; area: string | null;
+};
+type ProductRow = {
+  id: string; name: string; sku: string; barcode: string | null; brand: string;
+  model: string; category: string; unit: string; wholesale_price: number;
+  sales_price: number; stock: number; min_stock: number; is_active: boolean;
+};
+type Line = { product: ProductRow; quantity: number; unitPrice: number; discount: number };
 
 function NewOrderPage() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  const { session, user, loading } = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [customerId, setCustomerId] = useState("");
+  const [search, setSearch] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
-  const [overallDiscount, setOverallDiscount] = useState(0);
-  const [otherCharges, setOtherCharges] = useState(0);
-  const [payment, setPayment] = useState(0);
-  const [confirming, setConfirming] = useState(false);
+  const [discount, setDiscount] = useState("0");
+  const [charges, setCharges] = useState("0");
+  const [payment, setPayment] = useState("0");
+  const [note, setNote] = useState("");
 
-  const subtotal = lines.reduce((s, l) => s + l.qty * l.unitPrice - l.discount, 0);
-  const netTotal = Math.max(0, subtotal - overallDiscount + otherCharges);
-  const previousBalance = customer?.outstanding ?? 0;
-  const newBalance = previousBalance + netTotal - payment;
-  const creditExceeded = customer ? newBalance > customer.creditLimit : false;
+  const customersQuery = useQuery({
+    queryKey: ["customers"],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("customers")
+        .select("id, shop_name, contact_person, phone, category, credit_limit, area")
+        .order("shop_name");
+      if (error) throw error;
+      return (data ?? []) as CustomerRow[];
+    },
+  });
+  const productsQuery = useQuery({
+    queryKey: ["products"],
+    enabled: !!session,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("products")
+        .select("id, name, sku, barcode, brand, model, category, unit, wholesale_price, sales_price, stock, min_stock, is_active")
+        .eq("is_active", true).order("name");
+      if (error) throw error;
+      return (data ?? []) as ProductRow[];
+    },
+  });
 
+  const selectedCustomer = customersQuery.data?.find(c => c.id === customerId);
+  const filteredCustomers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (customersQuery.data ?? []).filter(c =>
+      !q || [c.shop_name, c.contact_person, c.phone, c.area ?? ""].some(v => v.toLowerCase().includes(q))
+    );
+  }, [customersQuery.data, search]);
+  const filteredProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    return (productsQuery.data ?? []).filter(p =>
+      !q || [p.name, p.sku, p.barcode ?? "", p.brand, p.model].some(v => v.toLowerCase().includes(q))
+    );
+  }, [productsQuery.data, productSearch]);
+
+  const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice - line.discount, 0);
+  const orderDiscount = Math.max(0, Number(discount) || 0);
+  const otherCharges = Math.max(0, Number(charges) || 0);
+  const total = Math.max(0, subtotal - orderDiscount + otherCharges);
+  const received = Math.max(0, Number(payment) || 0);
+
+  function addProduct(product: ProductRow) {
+    if (product.stock <= 0) {
+      toast.error("This product is out of stock.");
+      return;
+    }
+    setLines(old => {
+      const found = old.find(line => line.product.id === product.id);
+      if (found) return old.map(line => line.product.id === product.id
+        ? { ...line, quantity: Math.min(product.stock, line.quantity + 1) } : line);
+      const wholesale = ["Wholesale", "Dealer"].includes(selectedCustomer?.category ?? "");
+      return [...old, { product, quantity: 1, unitPrice: Number(wholesale ? product.wholesale_price : product.sales_price), discount: 0 }];
+    });
+  }
+  function updateLine(id: string, patch: Partial<Pick<Line, "quantity" | "unitPrice" | "discount">>) {
+    setLines(old => old.map(line => line.product.id === id ? { ...line, ...patch } : line));
+  }
+
+  const saveOrder = useMutation({
+    mutationFn: async (status: "Draft" | "Pending") => {
+      if (!user) throw new Error("Sign in to create an order.");
+      if (!selectedCustomer) throw new Error("Choose a customer.");
+      if (!lines.length) throw new Error("Add at least one product.");
+      if (lines.some(l => l.quantity < 1 || l.quantity > l.product.stock)) throw new Error("Order quantity exceeds available stock.");
+      if (lines.some(l => l.discount < 0 || l.discount > l.quantity * l.unitPrice)) throw new Error("Check line discounts.");
+      if (orderDiscount > subtotal) throw new Error("Order discount cannot exceed subtotal.");
+      if (received > total) throw new Error("Payment cannot exceed the order total.");
+      const { data: order, error: orderError } = await supabase.from("sales_orders").insert({
+        customer_id: selectedCustomer.id,
+        customer_name: selectedCustomer.shop_name,
+        created_by: user.id,
+        status: "Draft",
+        subtotal,
+        discount: orderDiscount,
+        other_charges: otherCharges,
+        total,
+        payment_received: received,
+        note: note.trim() || null,
+      }).select("id, order_no").single();
+      if (orderError) throw orderError;
+
+      const { error: itemError } = await supabase.from("sales_order_items").insert(
+        lines.map(line => ({
+          order_id: order.id,
+          product_id: line.product.id,
+          product_name: line.product.name,
+          sku: line.product.sku,
+          quantity: line.quantity,
+          unit_price: line.unitPrice,
+          discount: line.discount,
+          line_total: line.quantity * line.unitPrice - line.discount,
+        }))
+      );
+      if (itemError) {
+        await supabase.from("sales_orders").delete().eq("id", order.id);
+        throw itemError;
+      }
+      if (status === "Pending") {
+        const { error } = await supabase.from("sales_orders").update({ status: "Pending" }).eq("id", order.id);
+        if (error) throw error;
+      }
+      return { ...order, status };
+    },
+    onSuccess: (order) => {
+      toast.success(order.status === "Draft" ? "Draft saved" : "Order submitted", {
+        description: order.order_no,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+      void navigate({ to: "/orders" });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  if (loading) return <div className="grid min-h-screen place-items-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  if (!session) return <AppShell title="New Order"><div className="surface-card p-4">Sign in to create an order. <Link to="/login" className="text-primary underline">Sign in</Link></div></AppShell>;
+
+  const field = "h-11 w-full rounded-xl border border-input bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
   return (
-    <AppShell title="New Order" subtitle={`Step ${step} of 3`}>
-      <Link
-        to="/orders"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> Cancel and go back
-      </Link>
-
-      <ol className="mb-4 grid grid-cols-3 gap-2">
-        {["Customer", "Products", "Payment"].map((label, i) => {
-          const n = (i + 1) as 1 | 2 | 3;
-          const done = step > n;
-          return (
-            <li key={label}>
-              <button
-                onClick={() => (n === 1 || customer ? setStep(n) : null)}
-                className={`w-full rounded-xl border px-2 py-2 text-xs font-semibold ${
-                  step === n
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : done
-                      ? "border-success/40 bg-success/10 text-success-foreground"
-                      : "border-border bg-card text-muted-foreground"
-                }`}
-              >
-                {done ? "✓ " : `${n}. `}
-                {label}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
-      {step === 1 ? (
-        <StepCustomer
-          customer={customer}
-          onSelect={(c) => {
-            setCustomer(c);
-            setStep(2);
-          }}
-        />
-      ) : null}
-
-      {step === 2 && customer ? (
-        <StepProducts lines={lines} setLines={setLines} customerType={customer.type} />
-      ) : null}
-
-      {step === 3 && customer ? (
-        <StepSummary
-          customer={customer}
-          lines={lines}
-          subtotal={subtotal}
-          overallDiscount={overallDiscount}
-          setOverallDiscount={setOverallDiscount}
-          otherCharges={otherCharges}
-          setOtherCharges={setOtherCharges}
-          payment={payment}
-          setPayment={setPayment}
-          netTotal={netTotal}
-          previousBalance={previousBalance}
-          newBalance={newBalance}
-          creditExceeded={creditExceeded}
-        />
-      ) : null}
-
-      {step > 1 ? (
-        <div
-          className="fixed inset-x-0 bottom-16 z-40 border-t border-border bg-card/95 px-4 py-3 backdrop-blur"
-          style={{ boxShadow: "var(--shadow-nav)" }}
-        >
-          <div className="mx-auto max-w-2xl">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Total
-              </span>
-              <span className="num text-lg font-bold">{money(netTotal)}</span>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => toast.success("Draft saved. Stock is not reduced for drafts.")}
-                className="h-12 flex-1 rounded-xl bg-secondary text-sm font-bold text-secondary-foreground"
-              >
-                SAVE DRAFT
-              </button>
-              {step === 2 ? (
-                <button
-                  disabled={lines.length === 0}
-                  onClick={() => setStep(3)}
-                  className="h-12 flex-1 rounded-xl bg-primary text-sm font-bold text-primary-foreground disabled:opacity-40"
-                >
-                  CONTINUE
-                </button>
-              ) : (
-                <button
-                  disabled={lines.length === 0}
-                  onClick={() => setConfirming(true)}
-                  className="h-12 flex-1 rounded-xl bg-primary text-sm font-bold text-primary-foreground disabled:opacity-40"
-                >
-                  CONFIRM ORDER
-                </button>
-              )}
-            </div>
+    <AppShell title="New Order" subtitle="Create a real order from your live catalogue" action={<Link to="/orders" className="inline-flex items-center gap-1 text-sm"><ArrowLeft className="h-4 w-4" /> Orders</Link>}>
+      <section className="surface-card space-y-3 p-4">
+        <SectionTitle>1. Customer</SectionTitle>
+        <input className={field} value={search} onChange={e => setSearch(e.target.value)} placeholder="Search customer, contact or phone" />
+        {customersQuery.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : customersQuery.error ? <p className="text-sm text-destructive">Could not load customers: {(customersQuery.error as Error).message}</p> : filteredCustomers.length === 0 ? <EmptyState title="No customers available" hint="Add a real customer before creating an order." /> : (
+          <div className="max-h-64 space-y-2 overflow-y-auto">
+            {filteredCustomers.map(c => <button key={c.id} onClick={() => setCustomerId(c.id)} className={`w-full rounded-xl border p-3 text-left ${customerId === c.id ? "border-primary bg-primary/5" : "border-border"}`}>
+              <div className="flex justify-between gap-2"><span className="font-semibold">{c.shop_name}</span><span className="text-xs text-muted-foreground">{c.category}</span></div>
+              <p className="text-xs text-muted-foreground">{[c.contact_person, c.phone, c.area].filter(Boolean).join(" · ")}</p>
+              <p className="text-xs">Credit limit: {money(Number(c.credit_limit || 0))}</p>
+            </button>)}
           </div>
-        </div>
-      ) : null}
+        )}
+      </section>
 
-      {confirming && customer ? (
-        <ConfirmDialog
-          customerName={customer.company}
-          netTotal={netTotal}
-          payment={payment}
-          newBalance={newBalance}
-          creditExceeded={creditExceeded}
-          onCancel={() => setConfirming(false)}
-          onConfirm={() => {
-            setConfirming(false);
-            toast.success("Order ORD-2026-001023 confirmed", {
-              description: "Invoice INV-2026-001023 generated · stock updated · queued for sync.",
-            });
-          }}
-        />
-      ) : null}
+      <section className="surface-card mt-4 space-y-3 p-4">
+        <SectionTitle>2. Products and quantities</SectionTitle>
+        <input className={field} value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Search live catalogue by name, SKU or barcode" />
+        {productsQuery.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : productsQuery.error ? <p className="text-sm text-destructive">Could not load products: {(productsQuery.error as Error).message}</p> : filteredProducts.length === 0 ? <EmptyState title="No products found" hint="Add products in Admin → Manage items." /> : (
+          <div className="max-h-72 space-y-2 overflow-y-auto">
+            {filteredProducts.map(p => <div key={p.id} className="flex items-center gap-3 rounded-xl border border-border p-3">
+              <div className="min-w-0 flex-1"><p className="text-sm font-semibold">{p.name}</p><p className="text-xs text-muted-foreground">{p.sku} · Stock {p.stock} {p.unit}</p><p className="num text-xs">{money(Number(p.sales_price))} <span className="text-muted-foreground">wholesale {money(Number(p.wholesale_price))}</span></p></div>
+              <button disabled={p.stock <= 0} onClick={() => addProduct(p)} className="grid h-10 w-10 place-items-center rounded-lg bg-primary text-primary-foreground disabled:opacity-40" aria-label={`Add ${p.name}`}><Plus className="h-4 w-4" /></button>
+            </div>)}
+          </div>
+        )}
+        <SectionTitle>Order items ({lines.length})</SectionTitle>
+        {lines.length === 0 ? <EmptyState title="No products added" hint="Choose products above to build the order." /> : <div className="space-y-3">
+          {lines.map(line => <div key={line.product.id} className="rounded-xl border border-border p-3">
+            <div className="flex items-start justify-between gap-2"><div><p className="font-semibold">{line.product.name}</p><p className="text-xs text-muted-foreground">{line.product.sku}</p></div><button onClick={() => setLines(old => old.filter(l => l.product.id !== line.product.id))} aria-label="Remove item" className="text-destructive"><Trash2 className="h-4 w-4" /></button></div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <label className="text-xs text-muted-foreground">Quantity<input className={field+" mt-1"} type="number" min="1" max={line.product.stock} value={line.quantity} onChange={e => updateLine(line.product.id,{quantity:Math.min(line.product.stock,Math.max(1,Number(e.target.value)||1))})} /></label>
+              <label className="text-xs text-muted-foreground">Unit price<input className={field+" mt-1"} type="number" min="0" value={line.unitPrice} onChange={e => updateLine(line.product.id,{unitPrice:Math.max(0,Number(e.target.value)||0)})} /></label>
+              <label className="text-xs text-muted-foreground">Discount<input className={field+" mt-1"} type="number" min="0" max={line.quantity*line.unitPrice} value={line.discount} onChange={e => updateLine(line.product.id,{discount:Math.max(0,Number(e.target.value)||0)})} /></label>
+            </div>
+            <div className="mt-2 flex items-center justify-between border-t border-border pt-2"><span className="text-xs text-muted-foreground">Line total</span><strong className="num">{money(line.quantity*line.unitPrice-line.discount)}</strong></div>
+            <div className="mt-2 flex gap-2"><button className="rounded-lg bg-secondary px-3 py-1.5 text-xs" onClick={() => updateLine(line.product.id,{quantity:Math.max(1,line.quantity-1)})}><Minus className="inline h-3 w-3" /> Qty</button><button className="rounded-lg bg-secondary px-3 py-1.5 text-xs" onClick={() => updateLine(line.product.id,{quantity:Math.min(line.product.stock,line.quantity+1)})}><Plus className="inline h-3 w-3" /> Qty</button></div>
+          </div>)}
+        </div>}
+      </section>
+
+      <section className="surface-card mt-4 space-y-3 p-4">
+        <SectionTitle>3. Totals and payment</SectionTitle>
+        <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span className="num">{money(subtotal)}</span></div>
+        <label className="block text-sm">Order discount<input className={field+" mt-1"} type="number" min="0" value={discount} onChange={e => setDiscount(e.target.value)} /></label>
+        <label className="block text-sm">Other charges<input className={field+" mt-1"} type="number" min="0" value={charges} onChange={e => setCharges(e.target.value)} /></label>
+        <label className="block text-sm">Payment collected now<input className={field+" mt-1"} type="number" min="0" value={payment} onChange={e => setPayment(e.target.value)} /></label>
+        <label className="block text-sm">Order note<textarea className="mt-1 min-h-20 w-full rounded-xl border border-input bg-card p-3 text-sm" value={note} onChange={e => setNote(e.target.value)} placeholder="Optional delivery or order notes" /></label>
+        <div className="flex justify-between border-t border-border pt-3 text-lg font-bold"><span>Total</span><span className="num">{money(total)}</span></div>
+        <div className="flex justify-between text-sm"><span className="text-muted-foreground">Balance due</span><span className="num">{money(Math.max(0,total-received))}</span></div>
+        {selectedCustomer ? <p className="text-xs text-muted-foreground">Customer: {selectedCustomer.shop_name} · {selectedCustomer.category}</p> : <p className="text-xs text-destructive">Select a customer to continue.</p>}
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          <button disabled={saveOrder.isPending || !selectedCustomer || !lines.length} onClick={() => saveOrder.mutate("Draft")} className="h-12 rounded-xl bg-secondary font-bold disabled:opacity-40">{saveOrder.isPending ? "Saving…" : "Save draft"}</button>
+          <button disabled={saveOrder.isPending || !selectedCustomer || !lines.length} onClick={() => saveOrder.mutate("Pending")} className="h-12 rounded-xl bg-primary font-bold text-primary-foreground disabled:opacity-40"><ShoppingCart className="mr-1 inline h-4 w-4" />{saveOrder.isPending ? "Submitting…" : "Submit order"}</button>
+        </div>
+        <p className="text-xs text-muted-foreground">Submitted orders are saved to the database with status Pending for admin review. Inventory is not changed until the order is processed.</p>
+      </section>
     </AppShell>
-  );
-}
-
-function StepCustomer({
-  customer,
-  onSelect,
-}: {
-  customer: Customer | null;
-  onSelect: (c: Customer) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const list = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return customers.filter((c) =>
-      q ? [c.name, c.company, c.phone, c.id].some((f) => f.toLowerCase().includes(q)) : true,
-    );
-  }, [query]);
-
-  return (
-    <div>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search customer name, company, phone, ID"
-          className="h-12 w-full rounded-xl border border-input bg-card pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-      </div>
-
-      <SectionTitle>Select customer</SectionTitle>
-      {list.length === 0 ? (
-        <EmptyState title="No customer found" />
-      ) : (
-        <ul className="space-y-2">
-          {list.map((c) => {
-            const available = c.creditLimit - c.outstanding;
-            return (
-              <li key={c.id}>
-                <button
-                  onClick={() => onSelect(c)}
-                  className={`surface-card w-full p-3.5 text-left ${
-                    customer?.id === c.id ? "border-primary" : ""
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold">{c.company}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {c.name} · {c.phone}
-                      </p>
-                    </div>
-                    <Pill tone="info">{c.type}</Pill>
-                  </div>
-                  <div className="num mt-3 grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">Outstanding</p>
-                      <p className="font-semibold text-destructive">{money(c.outstanding)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Credit limit</p>
-                      <p className="font-semibold">{money(c.creditLimit)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Available</p>
-                      <p className={`font-semibold ${available < 0 ? "text-destructive" : "text-success"}`}>
-                        {money(available)}
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function StepProducts({
-  lines,
-  setLines,
-  customerType,
-}: {
-  lines: Line[];
-  setLines: (l: Line[]) => void;
-  customerType: Customer["type"];
-}) {
-  const [query, setQuery] = useState("");
-  const defaultType: PriceType =
-    customerType === "Wholesale" || customerType === "Dealer" ? "Wholesale" : "Sales";
-
-  const list = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return products.slice(0, 4);
-    return products.filter((p) =>
-      [p.name, p.sku, p.barcode, p.model, p.brand].some((f) => f.toLowerCase().includes(q)),
-    );
-  }, [query]);
-
-  function addProduct(p: Product) {
-    if (p.stock === 0) {
-      toast.error("Out of stock", { description: `${p.name} cannot be added.` });
-      return;
-    }
-    const existing = lines.find((l) => l.product.id === p.id);
-    if (existing) {
-      setLines(lines.map((l) => (l.product.id === p.id ? { ...l, qty: l.qty + 1 } : l)));
-      return;
-    }
-    setLines([
-      ...lines,
-      {
-        product: p,
-        qty: 1,
-        unitPrice: defaultType === "Wholesale" ? p.wholesalePrice : p.salesPrice,
-        priceType: defaultType,
-        discount: 0,
-      },
-    ]);
-  }
-
-  function update(id: string, patch: Partial<Line>) {
-    setLines(lines.map((l) => (l.product.id === id ? { ...l, ...patch } : l)));
-  }
-
-  return (
-    <div className="pb-36">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search product, SKU, model"
-            className="h-12 w-full rounded-xl border border-input bg-card pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-        <button
-          onClick={() => toast.info("Camera scanner opens on device")}
-          className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"
-          aria-label="Scan barcode"
-        >
-          <ScanLine className="h-5 w-5" />
-        </button>
-      </div>
-
-      <SectionTitle>{query ? "Search results" : "Recently ordered"}</SectionTitle>
-      <ul className="space-y-2">
-        {list.map((p) => (
-          <li key={p.id} className="surface-card flex items-center gap-3 p-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{p.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {p.model} · Stock {p.stock}
-              </p>
-              <p className="num mt-0.5 text-xs">
-                <span className="font-semibold">{money(p.salesPrice)}</span>
-                <span className="ml-2 text-muted-foreground">W/S {money(p.wholesalePrice)}</span>
-              </p>
-            </div>
-            <button
-              onClick={() => addProduct(p)}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40"
-              disabled={p.stock === 0}
-              aria-label={`Add ${p.name}`}
-            >
-              <Plus className="h-5 w-5" />
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      <SectionTitle>Order items ({lines.length})</SectionTitle>
-      {lines.length === 0 ? (
-        <EmptyState title="No products added" hint="Search or scan to add the first item." />
-      ) : (
-        <ul className="space-y-3">
-          {lines.map((l) => (
-            <li key={l.product.id} className="surface-card p-3.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{l.product.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{l.product.sku}</p>
-                </div>
-                <button
-                  onClick={() => setLines(lines.filter((x) => x.product.id !== l.product.id))}
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-destructive/10 text-destructive"
-                  aria-label="Remove item"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {(["Sales", "Wholesale", "Custom"] as PriceType[]).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() =>
-                      update(l.product.id, {
-                        priceType: t,
-                        unitPrice:
-                          t === "Sales"
-                            ? l.product.salesPrice
-                            : t === "Wholesale"
-                              ? l.product.wholesalePrice
-                              : l.unitPrice,
-                      })
-                    }
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                      l.priceType === t
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border text-muted-foreground"
-                    }`}
-                  >
-                    {t} price
-                  </button>
-                ))}
-              </div>
-              {l.priceType === "Custom" ? (
-                <p className="mt-2 text-[11px] text-warning-foreground">
-                  Custom price requires manager approval before confirming.
-                </p>
-              ) : null}
-
-              <div className="mt-3 grid grid-cols-[auto_1fr_1fr] items-end gap-2">
-                <div>
-                  <p className="mb-1 text-[11px] text-muted-foreground">Qty</p>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => update(l.product.id, { qty: Math.max(1, l.qty - 1) })}
-                      className="grid h-9 w-9 place-items-center rounded-lg bg-secondary"
-                      aria-label="Decrease"
-                    >
-                      <Minus className="h-4 w-4" />
-                    </button>
-                    <span className="num w-9 text-center text-sm font-bold">{l.qty}</span>
-                    <button
-                      onClick={() =>
-                        update(l.product.id, { qty: Math.min(l.product.stock, l.qty + 1) })
-                      }
-                      className="grid h-9 w-9 place-items-center rounded-lg bg-secondary"
-                      aria-label="Increase"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <p className="mb-1 text-[11px] text-muted-foreground">Unit price</p>
-                  <input
-                    type="number"
-                    min={0}
-                    value={l.unitPrice}
-                    onChange={(e) =>
-                      update(l.product.id, {
-                        unitPrice: Math.max(0, Number(e.target.value)),
-                        priceType: "Custom",
-                      })
-                    }
-                    className="num h-9 w-full rounded-lg border border-input bg-card px-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <p className="mb-1 text-[11px] text-muted-foreground">Line discount</p>
-                  <input
-                    type="number"
-                    min={0}
-                    value={l.discount}
-                    onChange={(e) => update(l.product.id, { discount: Math.max(0, Number(e.target.value)) })}
-                    className="num h-9 w-full rounded-lg border border-input bg-card px-2 text-sm"
-                  />
-                </div>
-              </div>
-
-              <p className="num mt-3 border-t border-border pt-2 text-right text-sm font-bold">
-                {money(l.qty * l.unitPrice - l.discount)}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function StepSummary(props: {
-  customer: Customer;
-  lines: Line[];
-  subtotal: number;
-  overallDiscount: number;
-  setOverallDiscount: (n: number) => void;
-  otherCharges: number;
-  setOtherCharges: (n: number) => void;
-  payment: number;
-  setPayment: (n: number) => void;
-  netTotal: number;
-  previousBalance: number;
-  newBalance: number;
-  creditExceeded: boolean;
-}) {
-  const {
-    customer,
-    lines,
-    subtotal,
-    overallDiscount,
-    setOverallDiscount,
-    otherCharges,
-    setOtherCharges,
-    payment,
-    setPayment,
-    netTotal,
-    previousBalance,
-    newBalance,
-    creditExceeded,
-  } = props;
-
-  return (
-    <div className="space-y-3 pb-40">
-      {creditExceeded ? (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/8 p-3.5">
-          <p className="flex items-center gap-2 text-sm font-bold text-destructive">
-            <AlertTriangle className="h-4 w-4" /> CREDIT LIMIT EXCEEDED
-          </p>
-          <div className="num mt-2 grid grid-cols-2 gap-y-1 text-xs">
-            <span className="text-muted-foreground">Current balance</span>
-            <span className="text-right font-semibold">{money(previousBalance)}</span>
-            <span className="text-muted-foreground">New order</span>
-            <span className="text-right font-semibold">{money(netTotal)}</span>
-            <span className="text-muted-foreground">Projected balance</span>
-            <span className="text-right font-semibold text-destructive">{money(newBalance)}</span>
-            <span className="text-muted-foreground">Credit limit</span>
-            <span className="text-right font-semibold">{money(customer.creditLimit)}</span>
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Manager approval is required before this order can be confirmed.
-          </p>
-        </div>
-      ) : null}
-
-      <div className="surface-card p-3.5">
-        <p className="text-sm font-semibold">{customer.company}</p>
-        <p className="text-xs text-muted-foreground">
-          {customer.id} · {customer.type} · {customer.phone}
-        </p>
-      </div>
-
-      <div className="surface-card divide-y divide-border">
-        {lines.map((l) => (
-          <div key={l.product.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{l.product.name}</p>
-              <p className="num text-xs text-muted-foreground">
-                {l.qty} × {money(l.unitPrice)}
-                {l.discount ? ` − ${money(l.discount)}` : ""}
-              </p>
-            </div>
-            <p className="num shrink-0 text-sm font-semibold">
-              {money(l.qty * l.unitPrice - l.discount)}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className="surface-card space-y-2.5 p-3.5">
-        <Row label="Subtotal" value={money(subtotal)} />
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm text-muted-foreground">Overall discount</span>
-          <input
-            type="number"
-            min={0}
-            value={overallDiscount}
-            onChange={(e) => setOverallDiscount(Math.max(0, Number(e.target.value)))}
-            className="num h-9 w-32 rounded-lg border border-input bg-card px-2 text-right text-sm"
-          />
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm text-muted-foreground">Other charges</span>
-          <input
-            type="number"
-            min={0}
-            value={otherCharges}
-            onChange={(e) => setOtherCharges(Math.max(0, Number(e.target.value)))}
-            className="num h-9 w-32 rounded-lg border border-input bg-card px-2 text-right text-sm"
-          />
-        </div>
-        <div className="flex items-center justify-between border-t border-border pt-2.5">
-          <span className="text-sm font-semibold">Net order total</span>
-          <span className="num text-lg font-bold">{money(netTotal)}</span>
-        </div>
-      </div>
-
-      <div className="surface-card space-y-2.5 p-3.5">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm text-muted-foreground">Payment now</span>
-          <input
-            type="number"
-            min={0}
-            value={payment}
-            onChange={(e) => setPayment(Math.max(0, Number(e.target.value)))}
-            className="num h-9 w-32 rounded-lg border border-input bg-card px-2 text-right text-sm"
-          />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {["Cash", "Bank Transfer", "Card", "Cheque"].map((m, i) => (
-            <span
-              key={m}
-              className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                i === 0 ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground"
-              }`}
-            >
-              {m}
-            </span>
-          ))}
-        </div>
-        <Row label="Previous balance" value={money(previousBalance)} />
-        <div className="flex items-center justify-between border-t border-border pt-2.5">
-          <span className="text-sm font-semibold">New outstanding balance</span>
-          <span className={`num text-lg font-bold ${creditExceeded ? "text-destructive" : ""}`}>
-            {money(newBalance)}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="num text-sm font-semibold">{value}</span>
-    </div>
-  );
-}
-
-function ConfirmDialog({
-  customerName,
-  netTotal,
-  payment,
-  newBalance,
-  creditExceeded,
-  onCancel,
-  onConfirm,
-}: {
-  customerName: string;
-  netTotal: number;
-  payment: number;
-  newBalance: number;
-  creditExceeded: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/40 p-4 sm:items-center">
-      <div className="w-full max-w-md rounded-2xl bg-card p-5 shadow-xl">
-        <h3 className="text-lg font-bold">Confirm order</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Order number will be generated automatically.
-        </p>
-        <dl className="num mt-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">Customer</dt>
-            <dd className="max-w-[60%] truncate font-semibold">{customerName}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">Order total</dt>
-            <dd className="font-semibold">{money(netTotal)}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">Payment</dt>
-            <dd className="font-semibold text-success">{money(payment)}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-muted-foreground">New balance</dt>
-            <dd className={`font-semibold ${creditExceeded ? "text-destructive" : ""}`}>
-              {money(newBalance)}
-            </dd>
-          </div>
-        </dl>
-        <div className="mt-5 flex gap-2">
-          <button
-            onClick={onCancel}
-            className="h-12 flex-1 rounded-xl bg-secondary text-sm font-bold text-secondary-foreground"
-          >
-            CANCEL
-          </button>
-          <button
-            onClick={onConfirm}
-            className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold text-primary-foreground"
-          >
-            <Check className="h-4 w-4" /> CONFIRM
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
