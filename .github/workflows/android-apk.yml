@@ -48,7 +48,7 @@ jobs:
           java-version: "21"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install required Android SDK packages
         run: sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
