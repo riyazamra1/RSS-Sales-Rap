@@ -48,7 +48,30 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+
+      // This app is mounted below /SalesManager on the existing rssapps.net
+      // site. Vite emits built files under /assets, while the browser requests
+      // them under /SalesManager/assets. Normalize only known static-file
+      // paths before handing them to Nitro; keep page routes unchanged for
+      // TanStack Router's subpath rewrite.
+      const incomingUrl = new URL(request.url);
+      const staticPrefixes = [
+        "/SalesManager/assets/",
+        "/SalesManager/icons/",
+      ];
+      const isPrefixedStaticAsset =
+        staticPrefixes.some((prefix) => incomingUrl.pathname.startsWith(prefix)) ||
+        incomingUrl.pathname === "/SalesManager/favicon.png" ||
+        incomingUrl.pathname === "/SalesManager/manifest.webmanifest";
+
+      const routedRequest = isPrefixedStaticAsset
+        ? (() => {
+            incomingUrl.pathname = incomingUrl.pathname.slice("/SalesManager".length) || "/";
+            return new Request(incomingUrl, request);
+          })()
+        : request;
+
+      const response = await handler.fetch(routedRequest, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
