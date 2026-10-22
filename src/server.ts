@@ -69,32 +69,40 @@ export default {
       let response: Response;
       if (isPrefixedAssets && assetsBinding && typeof assetsBinding.fetch === "function") {
         const assetSuffix = path.slice("/SalesManager/assets".length);
-        const candidates = ["/assets" + assetSuffix, "/_build/assets" + assetSuffix];
+        const candidates = ["/_build/assets" + assetSuffix, "/assets" + assetSuffix];
         response = new Response("Static asset not found", { status: 404 });
         for (const candidate of candidates) {
           const candidateUrl = new URL(request.url);
           candidateUrl.pathname = candidate;
           const candidateResponse = await assetsBinding.fetch(new Request(candidateUrl, request));
-          if (candidateResponse.status !== 404) {
+          // SSR catch-all handlers can return index.html with status 200 for a
+          // missing asset. Never treat an HTML fallback as a successful CSS/JS file.
+          const contentType = candidateResponse.headers.get("content-type") ?? "";
+          const looksLikeHtml = contentType.includes("text/html");
+          if (candidateResponse.ok && !looksLikeHtml) {
             response = candidateResponse;
             break;
           }
-          response = candidateResponse;
+          response = new Response("Static asset not found", { status: 404 });
         }
       } else if (isPrefixedAssets) {
         // Fallback for deployments where Nitro serves its own public files.
         const assetSuffix = path.slice("/SalesManager/assets".length);
-        const candidates = ["/assets" + assetSuffix, "/_build/assets" + assetSuffix];
+        const candidates = ["/_build/assets" + assetSuffix, "/assets" + assetSuffix];
         response = new Response("Static asset not found", { status: 404 });
         for (const candidate of candidates) {
           const candidateUrl = new URL(request.url);
           candidateUrl.pathname = candidate;
           const candidateResponse = await handler.fetch(new Request(candidateUrl, request), env, ctx);
-          if (candidateResponse.status !== 404) {
+          // SSR catch-all handlers can return index.html with status 200 for a
+          // missing asset. Never treat an HTML fallback as a successful CSS/JS file.
+          const contentType = candidateResponse.headers.get("content-type") ?? "";
+          const looksLikeHtml = contentType.includes("text/html");
+          if (candidateResponse.ok && !looksLikeHtml) {
             response = candidateResponse;
             break;
           }
-          response = candidateResponse;
+          response = new Response("Static asset not found", { status: 404 });
         }
       } else if (isPrefixedPublicFile && assetsBinding && typeof assetsBinding.fetch === "function") {
         const candidateUrl = new URL(request.url);
