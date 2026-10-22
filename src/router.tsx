@@ -7,7 +7,24 @@ export const getRouter = () => {
 
   const router = createRouter({
     routeTree,
-    basepath: "/SalesManager",
+    rewrite: {
+      input: ({ url }) => {
+        if (url.pathname === "/SalesManager") {
+          url.pathname = "/";
+        } else if (url.pathname.startsWith("/SalesManager/")) {
+          url.pathname = url.pathname.slice("/SalesManager".length) || "/";
+        }
+        return url;
+      },
+      output: ({ url }) => {
+        if (url.pathname === "/") {
+          url.pathname = "/SalesManager/";
+        } else if (!url.pathname.startsWith("/SalesManager/") && url.pathname !== "/SalesManager") {
+          url.pathname = "/SalesManager" + url.pathname;
+        }
+        return url;
+      },
+    },
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
