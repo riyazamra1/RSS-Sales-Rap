@@ -49,10 +49,10 @@ export default {
     try {
       const handler = await getServerEntry();
 
-      // This app is mounted below /SalesManager on the existing rssapps.net
-      // site. Nitro may publish generated client assets under /_build/assets,
-      // while Vite's base prefix can make the HTML request /SalesManager/assets.
-      // Try both known Nitro/Vite asset locations without changing page routes.
+      // The Cloudflare Worker route only covers /SalesManager*. Static assets
+      // normally live at /assets or /_build/assets, so rewriting the URL and
+      // calling the Start handler is not enough: ask the Workers Static Assets
+      // binding directly for the original built file.
       const incomingUrl = new URL(request.url);
       const path = incomingUrl.pathname;
       const isPrefixedAssets = path.startsWith("/SalesManager/assets/");
@@ -61,22 +61,45 @@ export default {
         path === "/SalesManager/favicon.png" ||
         path === "/SalesManager/manifest.webmanifest";
 
+      const bindings = (env ?? {}) as Record<string, unknown>;
+      const assetsBinding = bindings.ASSETS as
+        | { fetch: (request: Request) => Promise<Response> }
+        | undefined;
+
       let response: Response;
-      if (isPrefixedAssets) {
+      if (isPrefixedAssets && assetsBinding && typeof assetsBinding.fetch === "function") {
         const assetSuffix = path.slice("/SalesManager/assets".length);
-        const candidates = ["/_build/assets" + assetSuffix, "/assets" + assetSuffix];
-        response = new Response(null, { status: 404 });
+        const candidates = ["/assets" + assetSuffix, "/_build/assets" + assetSuffix];
+        response = new Response("Static asset not found", { status: 404 });
         for (const candidate of candidates) {
           const candidateUrl = new URL(request.url);
           candidateUrl.pathname = candidate;
-          const candidateRequest = new Request(candidateUrl, request);
-          const candidateResponse = await handler.fetch(candidateRequest, env, ctx);
+          const candidateResponse = await assetsBinding.fetch(new Request(candidateUrl, request));
           if (candidateResponse.status !== 404) {
             response = candidateResponse;
             break;
           }
           response = candidateResponse;
         }
+      } else if (isPrefixedAssets) {
+        // Fallback for deployments where Nitro serves its own public files.
+        const assetSuffix = path.slice("/SalesManager/assets".length);
+        const candidates = ["/assets" + assetSuffix, "/_build/assets" + assetSuffix];
+        response = new Response("Static asset not found", { status: 404 });
+        for (const candidate of candidates) {
+          const candidateUrl = new URL(request.url);
+          candidateUrl.pathname = candidate;
+          const candidateResponse = await handler.fetch(new Request(candidateUrl, request), env, ctx);
+          if (candidateResponse.status !== 404) {
+            response = candidateResponse;
+            break;
+          }
+          response = candidateResponse;
+        }
+      } else if (isPrefixedPublicFile && assetsBinding && typeof assetsBinding.fetch === "function") {
+        const candidateUrl = new URL(request.url);
+        candidateUrl.pathname = path.slice("/SalesManager".length) || "/";
+        response = await assetsBinding.fetch(new Request(candidateUrl, request));
       } else if (isPrefixedPublicFile) {
         const candidateUrl = new URL(request.url);
         candidateUrl.pathname = path.slice("/SalesManager".length) || "/";
