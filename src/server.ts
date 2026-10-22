@@ -62,7 +62,7 @@ export default {
         path === "/SalesManager/manifest.webmanifest";
 
       const bindings = (env ?? {}) as Record<string, unknown>;
-      const assetsBinding = bindings.ASSETS as
+      const assetsBinding = bindings["ASSETS"] as
         | { fetch: (request: Request) => Promise<Response> }
         | undefined;
 
