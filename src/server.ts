@@ -50,28 +50,40 @@ export default {
       const handler = await getServerEntry();
 
       // This app is mounted below /SalesManager on the existing rssapps.net
-      // site. Vite emits built files under /assets, while the browser requests
-      // them under /SalesManager/assets. Normalize only known static-file
-      // paths before handing them to Nitro; keep page routes unchanged for
-      // TanStack Router's subpath rewrite.
+      // site. Nitro may publish generated client assets under /_build/assets,
+      // while Vite's base prefix can make the HTML request /SalesManager/assets.
+      // Try both known Nitro/Vite asset locations without changing page routes.
       const incomingUrl = new URL(request.url);
-      const staticPrefixes = [
-        "/SalesManager/assets/",
-        "/SalesManager/icons/",
-      ];
-      const isPrefixedStaticAsset =
-        staticPrefixes.some((prefix) => incomingUrl.pathname.startsWith(prefix)) ||
-        incomingUrl.pathname === "/SalesManager/favicon.png" ||
-        incomingUrl.pathname === "/SalesManager/manifest.webmanifest";
+      const path = incomingUrl.pathname;
+      const isPrefixedAssets = path.startsWith("/SalesManager/assets/");
+      const isPrefixedPublicFile =
+        path.startsWith("/SalesManager/icons/") ||
+        path === "/SalesManager/favicon.png" ||
+        path === "/SalesManager/manifest.webmanifest";
 
-      const routedRequest = isPrefixedStaticAsset
-        ? (() => {
-            incomingUrl.pathname = incomingUrl.pathname.slice("/SalesManager".length) || "/";
-            return new Request(incomingUrl, request);
-          })()
-        : request;
-
-      const response = await handler.fetch(routedRequest, env, ctx);
+      let response: Response;
+      if (isPrefixedAssets) {
+        const assetSuffix = path.slice("/SalesManager/assets".length);
+        const candidates = ["/_build/assets" + assetSuffix, "/assets" + assetSuffix];
+        response = new Response(null, { status: 404 });
+        for (const candidate of candidates) {
+          const candidateUrl = new URL(request.url);
+          candidateUrl.pathname = candidate;
+          const candidateRequest = new Request(candidateUrl, request);
+          const candidateResponse = await handler.fetch(candidateRequest, env, ctx);
+          if (candidateResponse.status !== 404) {
+            response = candidateResponse;
+            break;
+          }
+          response = candidateResponse;
+        }
+      } else if (isPrefixedPublicFile) {
+        const candidateUrl = new URL(request.url);
+        candidateUrl.pathname = path.slice("/SalesManager".length) || "/";
+        response = await handler.fetch(new Request(candidateUrl, request), env, ctx);
+      } else {
+        response = await handler.fetch(request, env, ctx);
+      }
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
