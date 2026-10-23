@@ -55,7 +55,14 @@ export default {
       // binding directly for the original built file.
       const incomingUrl = new URL(request.url);
       const path = incomingUrl.pathname;
-      const isPrefixedAssets = path.startsWith("/SalesManager/assets/");
+      // TanStack Start emits build assets under /_build/assets; older assets may use /assets.
+      // Both URLs inherit the Vite base path when the app is mounted at /SalesManager.
+      const isPrefixedBuildAssets = path.startsWith("/SalesManager/_build/assets/");
+      const isPrefixedLegacyAssets = path.startsWith("/SalesManager/assets/");
+      const isPrefixedAssets = isPrefixedBuildAssets || isPrefixedLegacyAssets;
+      const assetPrefix = isPrefixedBuildAssets
+        ? "/SalesManager/_build/assets"
+        : "/SalesManager/assets";
       const isPrefixedPublicFile =
         path.startsWith("/SalesManager/icons/") ||
         path === "/SalesManager/favicon.png" ||
@@ -68,7 +75,7 @@ export default {
 
       let response: Response;
       if (isPrefixedAssets && assetsBinding && typeof assetsBinding.fetch === "function") {
-        const assetSuffix = path.slice("/SalesManager/assets".length);
+        const assetSuffix = path.slice(assetPrefix.length);
         const candidates = ["/_build/assets" + assetSuffix, "/assets" + assetSuffix];
         response = new Response("Static asset not found", { status: 404 });
         for (const candidate of candidates) {
@@ -87,7 +94,7 @@ export default {
         }
       } else if (isPrefixedAssets) {
         // Fallback for deployments where Nitro serves its own public files.
-        const assetSuffix = path.slice("/SalesManager/assets".length);
+        const assetSuffix = path.slice(assetPrefix.length);
         const candidates = ["/_build/assets" + assetSuffix, "/assets" + assetSuffix];
         response = new Response("Static asset not found", { status: 404 });
         for (const candidate of candidates) {
