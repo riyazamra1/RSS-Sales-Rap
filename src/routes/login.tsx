@@ -42,18 +42,29 @@ function LoginPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
-    setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    setBusy(false);
-    if (error) {
-      toast.error(error.message);
+    if (!email.trim() || !password) {
+      toast.error("Enter your email and password.");
       return;
     }
-    toast.success("Signed in");
-    void navigate({ to: "/", replace: true });
+
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Signed in");
+      await navigate({ to: "/", replace: true });
+    } catch (error) {
+      console.error("[Auth] Sign-in request failed:", error);
+      toast.error(error instanceof Error ? error.message : "Sign in failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

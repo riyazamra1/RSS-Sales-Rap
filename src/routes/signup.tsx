@@ -58,26 +58,37 @@ function SignupPage() {
       toast.error("Password must be at least 8 characters");
       return;
     }
-    setBusy(true);
-    const { error } = await supabase.auth.signUp({
-      email: form.email.trim(),
-      password: form.password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/login`,
-        data: {
-          full_name: form.fullName.trim().slice(0, 100),
-          employee_id: form.employeeId.trim().slice(0, 30),
-          phone: form.phone.trim().slice(0, 30),
-          territory: form.territory.trim().slice(0, 80),
-        },
-      },
-    });
-    setBusy(false);
-    if (error) {
-      toast.error(error.message);
+    if (!form.email.trim()) {
+      toast.error("Enter your work email address.");
       return;
     }
-    setDone(true);
+
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: {
+          emailRedirectTo: new URL(`${import.meta.env.BASE_URL}login`, window.location.origin).toString(),
+          data: {
+            full_name: form.fullName.trim().slice(0, 100),
+            employee_id: form.employeeId.trim().slice(0, 30),
+            phone: form.phone.trim().slice(0, 30),
+            territory: form.territory.trim().slice(0, 80),
+          },
+        },
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      setDone(true);
+    } catch (error) {
+      console.error("[Auth] Registration request failed:", error);
+      toast.error(error instanceof Error ? error.message : "Account creation failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (done) {
