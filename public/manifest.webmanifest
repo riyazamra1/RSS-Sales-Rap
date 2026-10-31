@@ -2,19 +2,21 @@
   "name": "RSS Sales Manager",
   "short_name": "RSS Sales",
   "description": "Field order, customer and inventory management for RSS Razeen Secure Solutions.",
-  "start_url": "/",
+  "id": "/SalesManager/",
+  "start_url": "/SalesManager/",
+  "scope": "/SalesManager/",
   "display": "standalone",
   "background_color": "#0B1F3A",
   "theme_color": "#0B1F3A",
   "icons": [
     {
-      "src": "/icons/app-icon.png",
+      "src": "/SalesManager/icons/app-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/app-icon.png",
+      "src": "/SalesManager/icons/app-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
