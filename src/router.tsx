@@ -7,24 +7,10 @@ export const getRouter = () => {
 
   const router = createRouter({
     routeTree,
-    rewrite: {
-      input: ({ url }) => {
-        if (url.pathname === "/SalesManager") {
-          url.pathname = "/";
-        } else if (url.pathname.startsWith("/SalesManager/")) {
-          url.pathname = url.pathname.slice("/SalesManager".length) || "/";
-        }
-        return url;
-      },
-      output: ({ url }) => {
-        if (url.pathname === "/") {
-          url.pathname = "/SalesManager/";
-        } else if (!url.pathname.startsWith("/SalesManager/") && url.pathname !== "/SalesManager") {
-          url.pathname = "/SalesManager" + url.pathname;
-        }
-        return url;
-      },
-    },
+    // Let TanStack Router own the application subpath. The previous input/output
+    // rewrite manually added the prefix to URLs that already contained it,
+    // producing /SalesManager/SalesManager/.
+    basepath: "/SalesManager",
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
