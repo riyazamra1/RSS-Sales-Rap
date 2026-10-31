@@ -80,17 +80,19 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      const handler = await getServerEntry();
       const assetRequest = toStaticAssetRequest(request);
       const assets = (env as { ASSETS?: StaticAssetsBinding } | null)?.ASSETS;
 
-      // Serve JS/CSS and public files from the actual Cloudflare static asset
-      // binding. Do not send these requests into the SSR router as page routes.
+      // Resolve static assets before importing the TanStack server entry.
+      // Client JavaScript must be served independently of SSR initialization;
+      // otherwise an SSR import failure can leave server-rendered controls
+      // visible but inert because their hydration bundle never loads.
       if (assetRequest && assets) {
         const assetResponse = await assets.fetch(assetRequest);
         if (assetResponse.status !== 404) return assetResponse;
       }
 
+      const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
