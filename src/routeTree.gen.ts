@@ -136,10 +136,6 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/admin/forgot-password': typeof AdminForgotPasswordRoute
-  '/forgot-password': typeof ForgotPasswordRoute
-  '/admin/forgot-password': typeof AdminForgotPasswordRoute
-  '/forgot-password': typeof ForgotPasswordRoute
-  '/admin/forgot-password': typeof AdminForgotPasswordRoute
   '/admin/items': typeof AdminItemsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -159,6 +155,8 @@ export interface FileRoutesByTo {
   '/reports': typeof ReportsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/admin/forgot-password': typeof AdminForgotPasswordRoute
   '/admin/items': typeof AdminItemsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/settings': typeof AdminSettingsRoute
@@ -179,6 +177,8 @@ export interface FileRoutesById {
   '/reports': typeof ReportsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/admin/forgot-password': typeof AdminForgotPasswordRoute
   '/admin/items': typeof AdminItemsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/settings': typeof AdminSettingsRoute
