@@ -35,31 +35,42 @@ function AdminLoginPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
+    if (!email.trim() || !password) {
+      toast.error("Enter your administrator email and password.");
+      return;
+    }
+
     setBusy(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    if (error || !data.user) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error || !data.user) {
+        toast.error(error?.message ?? "Sign in failed");
+        return;
+      }
+
+      const { data: roleRow, error: roleError } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", data.user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (roleError || !roleRow) {
+        await supabase.auth.signOut();
+        toast.error("This account does not have administrator access.");
+        return;
+      }
+
+      toast.success("Welcome back, administrator");
+      await navigate({ to: "/admin", replace: true });
+    } catch (error) {
+      console.error("[Auth] Admin sign-in request failed:", error);
+      toast.error(error instanceof Error ? error.message : "Admin sign in failed. Please try again.");
+    } finally {
       setBusy(false);
-      toast.error(error?.message ?? "Sign in failed");
-      return;
     }
-    const { data: roleRow, error: roleError } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", data.user.id)
-      .eq("role", "admin")
-      .maybeSingle();
-    const isAdmin = !!roleRow;
-    setBusy(false);
-    if (roleError || !isAdmin) {
-      await supabase.auth.signOut();
-      toast.error("This account does not have administrator access.");
-      return;
-    }
-    toast.success("Welcome back, administrator");
-    void navigate({ to: "/admin", replace: true });
   }
 
   return (
