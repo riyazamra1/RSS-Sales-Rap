@@ -126,7 +126,7 @@ function LoginPage() {
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} SIGN IN
           </button>
         </form>
-        <ForgotPassword initialEmail={email} />
+        <ForgotPassword />
 
         <p className="mt-5 text-center text-sm text-navy-foreground/70">
           New sales rep?{" "}
