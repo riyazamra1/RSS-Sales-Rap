@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: rss-sales-rap-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
