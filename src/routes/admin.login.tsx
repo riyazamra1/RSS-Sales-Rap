@@ -116,7 +116,7 @@ function AdminLoginPage() {
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} ENTER ADMIN PANEL
           </button>
         </form>
-        <ForgotPassword initialEmail={email} />
+        <ForgotPassword isAdmin />
 
         <p className="mt-6 text-center text-sm">
           <Link to="/login" className="font-semibold text-navy-foreground/80">
