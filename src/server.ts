@@ -7,6 +7,10 @@ type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
 
+type StaticAssetsBinding = {
+  fetch: (request: Request) => Promise<Response> | Response;
+};
+
 const APP_BASE_PATH = "/SalesManager";
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
@@ -21,30 +25,29 @@ async function getServerEntry(): Promise<ServerEntry> {
 }
 
 /**
- * Vite emits the app's CSS/JS and public files below /SalesManager, while
- * Nitro's Cloudflare asset binding can expose the same files from the origin
- * root. Resolve those known static paths against the root first, then retain
- * the prefixed request as a fallback for hosts that preserve the subpath.
- *
- * Never rewrite application routes or server-function requests: TanStack
- * Router and the Start server need to see the configured /SalesManager base.
+ * Resolve Vite assets through the Cloudflare ASSETS binding before invoking
+ * TanStack Start. This is important for a subpath deployment: the HTML may
+ * request assets at either /assets/... or /SalesManager/assets/..., while the
+ * static asset binding stores them at the origin root.
  */
-function isSubpathStaticAsset(pathname: string): boolean {
-  if (!pathname.startsWith(`${APP_BASE_PATH}/`)) return false;
+function toStaticAssetRequest(request: Request): Request | null {
+  const url = new URL(request.url);
+  let assetPath = url.pathname;
 
-  const assetPath = pathname.slice(APP_BASE_PATH.length);
-  return (
+  if (assetPath.startsWith(`${APP_BASE_PATH}/`)) {
+    assetPath = assetPath.slice(APP_BASE_PATH.length);
+  }
+
+  const isAsset =
     assetPath.startsWith("/assets/") ||
     assetPath.startsWith("/icons/") ||
     assetPath === "/favicon.png" ||
     assetPath === "/manifest.webmanifest" ||
-    assetPath === "/robots.txt"
-  );
-}
+    assetPath === "/robots.txt";
 
-function withoutAppBasePath(request: Request): Request {
-  const url = new URL(request.url);
-  url.pathname = url.pathname.slice(APP_BASE_PATH.length) || "/";
+  if (!isAsset) return null;
+
+  url.pathname = assetPath;
   return new Request(url, request);
 }
 
@@ -78,17 +81,17 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
-      let response: Response;
+      const assetRequest = toStaticAssetRequest(request);
+      const assets = (env as { ASSETS?: StaticAssetsBinding } | null)?.ASSETS;
 
-      if (isSubpathStaticAsset(new URL(request.url).pathname)) {
-        response = await handler.fetch(withoutAppBasePath(request), env, ctx);
-        if (response.status === 404) {
-          response = await handler.fetch(request, env, ctx);
-        }
-      } else {
-        response = await handler.fetch(request, env, ctx);
+      // Serve JS/CSS and public files from the actual Cloudflare static asset
+      // binding. Do not send these requests into the SSR router as page routes.
+      if (assetRequest && assets) {
+        const assetResponse = await assets.fetch(assetRequest);
+        if (assetResponse.status !== 404) return assetResponse;
       }
 
+      const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
