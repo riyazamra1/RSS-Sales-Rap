@@ -13,6 +13,8 @@ export const Route = createFileRoute("/install")({
           "Install RSS Sales Manager on your Android or iPhone home screen for full-screen, app-like access in the field.",
       },
       { property: "og:title", content: "Install the app — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Add RSS Sales Manager to your phone home screen in two taps.",

@@ -6,13 +6,15 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useLocation,
+  useNavigate,
 } from "@tanstack/react-router";
 import { lazy, useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { SplashScreen } from "@/components/SplashScreen";
 import { useBrandingSync } from "@/hooks/useAppSettings";
 
@@ -111,9 +113,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", type: "image/png", href: "/SalesManager/favicon.png" },
-      { rel: "apple-touch-icon", href: "/SalesManager/icons/app-icon.png" },
-      { rel: "manifest", href: "/SalesManager/manifest.webmanifest" },
+      { rel: "icon", type: "image/png", href: "/favicon.png" },
+      { rel: "apple-touch-icon", href: "/icons/app-icon.png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -149,6 +151,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrandingSync />
+        <RecoveryRedirect />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <SplashScreen />
@@ -160,6 +163,18 @@ function RootComponent() {
 
 function BrandingSync() {
   useBrandingSync();
+  return null;
+}
+
+function RecoveryRedirect() {
+  const { isRecovery } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (isRecovery && location.pathname !== "/reset-password") {
+      void navigate({ to: "/reset-password", replace: true });
+    }
+  }, [isRecovery, location.pathname, navigate]);
   return null;
 }
 

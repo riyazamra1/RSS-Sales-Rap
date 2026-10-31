@@ -14,6 +14,8 @@ export const Route = createFileRoute("/signup")({
           "Register a new RSS Razeen Secure Solutions sales representative account. Admin approval is required before field access is granted.",
       },
       { property: "og:title", content: "Create sales rep account — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Sales rep registration with admin approval for RSS Sales Manager.",

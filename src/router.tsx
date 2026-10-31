@@ -7,10 +7,6 @@ export const getRouter = () => {
 
   const router = createRouter({
     routeTree,
-    // Let TanStack Router own the application subpath. The previous input/output
-    // rewrite manually added the prefix to URLs that already contained it,
-    // producing /SalesManager/SalesManager/.
-    basepath: "/SalesManager",
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,

@@ -18,6 +18,8 @@ export const Route = createFileRoute("/admin/")({
           "Approve new sales reps, manage admin and accountant roles, and review payment collections for RSS Razeen Secure Solutions.",
       },
       { property: "og:title", content: "Admin panel — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "User approval, role management and collection oversight for RSS Sales Manager.",
@@ -84,38 +86,6 @@ function AdminPanelPage() {
       if (error) throw error;
       return data ?? [];
     },
-  });
-
-  const ordersQuery = useQuery({
-    queryKey: ["admin", "orders"],
-    enabled: !!session && isAdmin,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("sales_orders")
-        .select("id, order_no, invoice_no, customer_name, status, total, payment_received, created_at")
-        .order("created_at", { ascending: false }).limit(100);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const updateOrderStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const patch: { status: string; invoice_no?: string } = { status };
-      if (status === "INVOICED") {
-        const { data, error } = await supabase.from("sales_orders")
-          .select("order_no, invoice_no").eq("id", id).single();
-        if (error) throw error;
-        patch.invoice_no = data.invoice_no || data.order_no.replace(/^ORD-/, "INV-");
-      }
-      const { error } = await supabase.from("sales_orders").update(patch).eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Order status updated");
-      void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["orders"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
   });
 
   const setStatus = useMutation({
@@ -215,23 +185,6 @@ function AdminPanelPage() {
         </Link>
 
 
-
-        <SectionTitle>Order review and invoicing</SectionTitle>
-        {ordersQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading orders…</p> : ordersQuery.error ? <p className="text-sm text-destructive">Could not load orders: {(ordersQuery.error as Error).message}</p> : (ordersQuery.data ?? []).length === 0 ? <p className="surface-card p-4 text-sm text-muted-foreground">No submitted orders yet. Sales representatives’ real orders will appear here.</p> : (
-          <ul className="space-y-3">
-            {(ordersQuery.data ?? []).map((order) => (
-              <li key={order.id} className="surface-card p-3.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><p className="truncate font-semibold">{order.customer_name}</p><p className="text-xs text-muted-foreground">{order.order_no} · {shortDate(order.created_at)}</p><p className="num mt-1 text-sm font-bold">{money(Number(order.total || 0))}</p></div>
-                  <Pill tone={order.status === "INVOICED" ? "success" : order.status === "Cancelled" ? "danger" : "warning"}>{order.status}</Pill>
-                </div>
-                {order.status !== "INVOICED" && order.status !== "Cancelled" ? (
-                  <button disabled={updateOrderStatus.isPending} onClick={() => updateOrderStatus.mutate({id: order.id, status: "INVOICED"})} className="mt-3 h-10 w-full rounded-xl bg-primary text-sm font-bold text-primary-foreground disabled:opacity-50">{updateOrderStatus.isPending ? "Updating…" : "Mark INVOICED"}</button>
-                ) : order.invoice_no ? <p className="mt-2 text-xs text-muted-foreground">Invoice: {order.invoice_no}</p> : null}
-              </li>
-            ))}
-          </ul>
-        )}
 
         <SectionTitle>Sales rep accounts</SectionTitle>
         {usersQuery.isLoading ? (

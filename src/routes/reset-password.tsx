@@ -1,104 +1,62 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { Loader2, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
+import { useState } from "react";
+import { KeyRound, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ForgotPassword } from "@/components/ForgotPassword";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/reset-password")({
-  head: () => ({
-    meta: [
-      { title: "Reset password — RSS Sales Manager" },
-      { name: "description", content: "Set a new password for your RSS Sales Manager account." },
-    ],
-  }),
+  head: () => ({ meta: [
+    { title: "Reset password — RSS Sales Manager" },
+    { name: "description", content: "Securely reset your RSS Sales Manager account password." },
+    { property: "og:title", content: "Reset password — RSS Sales Manager" },
+    { property: "og:description", content: "Password recovery for RSS Razeen Secure Solutions staff." },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary_large_image" },
+  ] }),
   component: ResetPasswordPage,
 });
 
 function ResetPasswordPage() {
+  const { loading, session, isRecovery, finishRecovery } = useAuth();
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!alive) return;
-      setReady(!error && !!data.session);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!alive) return;
-      if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) setReady(true);
-    });
-    return () => {
-      alive = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  async function onSubmit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
-    if (password.length < 8) {
-      toast.error("Use at least 8 characters for your new password.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      toast.error("Passwords do not match.");
-      return;
-    }
+    if (busy || !isRecovery || !session) return;
+    setError("");
+    if (password !== confirm) { setError("Passwords do not match."); return; }
     setBusy(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setBusy(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    await supabase.auth.signOut();
-    setDone(true);
-    toast.success("Password updated. You can now sign in.");
+    try {
+      const { data, error: userError } = await supabase.auth.getUser();
+      if (userError || !data.user) throw new Error("This reset link has expired. Request a new link.");
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      finishRecovery();
+      setDone(true);
+      setPassword(""); setConfirm("");
+      await supabase.auth.signOut();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update your password. Please try again.");
+    } finally { setBusy(false); }
   }
 
-  return (
-    <div className="flex min-h-screen flex-col bg-navy text-navy-foreground">
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-12">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10 text-primary">
-          <ShieldCheck className="h-7 w-7" />
-        </span>
-        <h1 className="mt-5 text-3xl font-bold">Reset password</h1>
-        <p className="mt-1.5 text-sm text-navy-foreground/70">
-          Choose a new password for your RSS Sales Manager account.
-        </p>
-        {done ? (
-          <div className="mt-7 space-y-4">
-            <p className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm">Your password has been updated successfully.</p>
-            <Link to="/login" className="flex h-12 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">Back to sign in</Link>
-            <Link to="/admin/login" className="block text-center text-sm font-semibold text-navy-foreground/80">Admin login</Link>
-          </div>
-        ) : !ready ? (
-          <div className="mt-7 space-y-4">
-            <p className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-navy-foreground/75">
-              Open the latest password-reset link from your email on this device. If it has expired, request a new link from the login page.
-            </p>
-            <Link to="/login" className="flex h-12 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">Back to sign in</Link>
-          </div>
-        ) : (
-          <form className="mt-7 space-y-3" onSubmit={onSubmit}>
-            <div>
-              <label htmlFor="new-password" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-navy-foreground/60">New password</label>
-              <input id="new-password" type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-12 w-full rounded-xl border border-white/10 bg-white/10 px-3.5 text-sm text-navy-foreground focus:outline-none focus:ring-2 focus:ring-primary" placeholder="At least 8 characters" />
-            </div>
-            <div>
-              <label htmlFor="confirm-password" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-navy-foreground/60">Confirm new password</label>
-              <input id="confirm-password" type="password" required minLength={8} autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="h-12 w-full rounded-xl border border-white/10 bg-white/10 px-3.5 text-sm text-navy-foreground focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Re-enter new password" />
-            </div>
-            <button type="submit" disabled={busy} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold text-primary-foreground disabled:opacity-60">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} UPDATE PASSWORD
-            </button>
-          </form>
-        )}
-      </div>
+  return <main className="flex min-h-screen flex-col bg-navy text-navy-foreground">
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-12">
+      <span className="grid h-14 w-14 place-items-center rounded-md bg-primary text-primary-foreground"><KeyRound className="h-7 w-7" /></span>
+      <h1 className="mt-5 text-3xl font-bold">Reset password</h1>
+      <p className="mt-2 text-sm text-navy-foreground/70">RSS Sales Manager</p>
+      {done ? <div className="mt-6"><p role="status">Your password has been updated.</p><Button asChild className="mt-5 w-full"><Link to="/admin/login">Admin sign in</Link></Button><Button asChild variant="link" className="mt-2 w-full"><Link to="/login">Sales rep sign in</Link></Button></div> : loading ? <p role="status" className="mt-6">Checking reset link…</p> : isRecovery && session ? <form onSubmit={submit} className="mt-6 space-y-4">
+        <div><label htmlFor="new-password" className="mb-2 block text-sm">New password</label><input id="new-password" type="password" autoComplete="new-password" required value={password} onChange={(e) => setPassword(e.target.value)} className="h-12 w-full rounded-md border border-navy-foreground/20 bg-navy-foreground/10 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary" /></div>
+        <div><label htmlFor="confirm-password" className="mb-2 block text-sm">Confirm new password</label><input id="confirm-password" type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} className="h-12 w-full rounded-md border border-navy-foreground/20 bg-navy-foreground/10 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary" /></div>
+        {error && <p role="alert" className="text-sm">{error}</p>}
+        <Button type="submit" disabled={busy} className="h-12 w-full">{busy && <Loader2 className="animate-spin" />} Save new password</Button>
+      </form> : <div className="mt-6"><p role="alert" className="text-sm">This reset link is missing, invalid or expired. Request a new link below.</p><ForgotPassword /></div>}
     </div>
-  );
+  </main>;
 }

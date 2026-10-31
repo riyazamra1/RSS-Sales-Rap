@@ -18,6 +18,8 @@ export const Route = createFileRoute("/admin/items")({
           "Admins add and manage CCTV, networking and hardware items with pricing, stock levels and suppliers.",
       },
       { property: "og:title", content: "Manage items — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Create and maintain the product catalogue used by the field sales team.",

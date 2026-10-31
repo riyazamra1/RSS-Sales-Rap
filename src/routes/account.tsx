@@ -27,6 +27,8 @@ export const Route = createFileRoute("/account")({
           "Sales rep profile, targets and commission, sync status, notifications and security settings.",
       },
       { property: "og:title", content: "Account — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Profile, performance, settings and session security for RSS field reps.",
@@ -41,7 +43,7 @@ function AccountPage() {
   const { session, profile, isAdmin, signOut } = useAuth();
   const { settings } = useAppSettings();
 
-  const achievement = currentUser.target > 0 ? Math.round((currentUser.achieved / currentUser.target) * 100) : 0;
+  const achievement = Math.round((currentUser.achieved / currentUser.target) * 100);
   const commission = Math.round((currentUser.achieved * currentUser.commissionRate) / 100);
 
   const displayName = profile?.full_name || currentUser.name;

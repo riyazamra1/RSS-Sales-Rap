@@ -36,6 +36,8 @@ export const Route = createFileRoute("/admin/settings")({
           "Admin control centre: upload the company logo, edit company details and address, and configure Google Sheets sync and app-wide options.",
       },
       { property: "og:title", content: "App settings — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Branding, company details and Google Sheets configuration for RSS Sales Manager.",

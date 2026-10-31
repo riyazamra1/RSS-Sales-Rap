@@ -4,6 +4,7 @@ import { Eye, EyeOff, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { ForgotPassword } from "@/components/ForgotPassword";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -15,6 +16,8 @@ export const Route = createFileRoute("/login")({
           "Secure sign in for RSS Razeen Secure Solutions sales representatives, accountants and administrators.",
       },
       { property: "og:title", content: "Sign in — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Role-based access for field reps, accountants and admins.",
@@ -26,36 +29,15 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { session } = useAuth();
+  const { session, isRecovery } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [resetBusy, setResetBusy] = useState(false);
 
   useEffect(() => {
-    if (session) void navigate({ to: "/", replace: true });
-  }, [session, navigate]);
-
-  async function onForgotPassword() {
-    const address = email.trim();
-    if (!address) {
-      toast.error("Enter your email address first.");
-      return;
-    }
-    if (resetBusy) return;
-    setResetBusy(true);
-    const appBase = window.location.pathname.startsWith("/SalesManager") ? "/SalesManager" : "";
-    const { error } = await supabase.auth.resetPasswordForEmail(address, {
-      redirectTo: `${window.location.origin}${appBase}/reset-password`,
-    });
-    setResetBusy(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success("If an account exists for this email, a password reset link will be sent.");
-  }
+    if (session && !isRecovery) void navigate({ to: "/", replace: true });
+  }, [session, isRecovery, navigate]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -136,16 +118,6 @@ function LoginPage() {
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => void onForgotPassword()}
-              disabled={resetBusy}
-              className="text-xs font-semibold text-primary underline-offset-4 hover:underline disabled:opacity-60"
-            >
-              {resetBusy ? "Sending reset link…" : "Forgot password?"}
-            </button>
-          </div>
           <button
             type="submit"
             disabled={busy}
@@ -154,6 +126,7 @@ function LoginPage() {
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} SIGN IN
           </button>
         </form>
+        <ForgotPassword initialEmail={email} />
 
         <p className="mt-5 text-center text-sm text-navy-foreground/70">
           New sales rep?{" "}

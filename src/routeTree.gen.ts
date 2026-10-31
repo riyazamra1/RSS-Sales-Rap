@@ -15,8 +15,8 @@ import { Route as InstallRouteImport } from './routes/install'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ReportsRouteImport } from './routes/reports'
-import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminItemsRouteImport } from './routes/admin.items'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
@@ -57,14 +57,14 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SignupRoute = SignupRouteImport.update({
-  id: '/signup',
-  path: '/signup',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -121,7 +121,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin/items': typeof AdminItemsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -140,6 +139,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin/items': typeof AdminItemsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -159,6 +159,7 @@ export interface FileRoutesById {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/reports': typeof ReportsRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin/items': typeof AdminItemsRoute
   '/admin/login': typeof AdminLoginRoute
@@ -198,6 +199,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/reports'
+    | '/reset-password'
     | '/signup'
     | '/admin/items'
     | '/admin/login'
@@ -216,6 +218,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/reports'
+    | '/reset-password'
     | '/signup'
     | '/admin/items'
     | '/admin/login'

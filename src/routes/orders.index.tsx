@@ -1,66 +1,171 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Plus, Search, Loader2, RefreshCw } from "lucide-react";
+import { Plus, Search, CloudOff, CloudUpload, CheckCircle2 } from "lucide-react";
 import { AppShell, EmptyState, Pill, SectionTitle, StatCard } from "@/components/AppShell";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { orders, type OrderStatus } from "@/lib/mock-data";
 import { money, shortDate } from "@/lib/format";
 
 export const Route = createFileRoute("/orders/")({
-  head: () => ({ meta: [{ title: "Orders — RSS Sales Manager" }] }),
+  head: () => ({
+    meta: [
+      { title: "Orders — RSS Sales Manager" },
+      {
+        name: "description",
+        content:
+          "Create and track sales orders, invoices, payments and sync status from the field on any device.",
+      },
+      { property: "og:title", content: "Orders — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+      {
+        property: "og:description",
+        content: "Order pipeline with totals, payments, balances and sync status.",
+      },
+    ],
+  }),
   component: OrdersPage,
 });
 
-type OrderRow = {
-  id: string; order_no: string; invoice_no: string | null; customer_name: string;
-  status: string; total: number; payment_received: number; created_at: string;
-};
+const statuses: ("All" | OrderStatus)[] = [
+  "All",
+  "Draft",
+  "Pending",
+  "Confirmed",
+  "Processing",
+  "Completed",
+  "Cancelled",
+];
+
+const statusTone = (s: OrderStatus) =>
+  s === "Completed" || s === "Confirmed"
+    ? "success"
+    : s === "Cancelled" || s === "Returned"
+      ? "danger"
+      : s === "Draft"
+        ? "neutral"
+        : "warning";
 
 function OrdersPage() {
-  const { session } = useAuth();
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("All");
-  const ordersQuery = useQuery({
-    queryKey: ["orders"],
-    enabled: !!session,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("sales_orders")
-        .select("id, order_no, invoice_no, customer_name, status, total, payment_received, created_at")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as OrderRow[];
-    },
-  });
+  const [status, setStatus] = useState<(typeof statuses)[number]>("All");
+
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (ordersQuery.data ?? []).filter(o =>
-      (status === "All" || o.status === status) &&
-      (!q || [o.order_no, o.invoice_no ?? "", o.customer_name, o.status].some(v => v.toLowerCase().includes(q)))
-    );
-  }, [ordersQuery.data, query, status]);
-  const rows = ordersQuery.data ?? [];
-  const total = rows.reduce((sum, o) => sum + Number(o.total || 0), 0);
-  const pending = rows.filter(o => ["Pending", "Draft"].includes(o.status)).length;
-  const collected = rows.reduce((sum, o) => sum + Number(o.payment_received || 0), 0);
-  const statuses = ["All", "Draft", "Pending", "Confirmed", "Processing", "Completed", "Cancelled", "Returned", "INVOICED"];
-  const tone = (value: string) => ["Completed", "Confirmed", "INVOICED"].includes(value) ? "success" : ["Cancelled", "Returned"].includes(value) ? "danger" : value === "Draft" ? "neutral" : "warning";
+    return orders
+      .filter((o) =>
+        q ? [o.id, o.invoiceId, o.customerName, o.date].some((f) => f.toLowerCase().includes(q)) : true,
+      )
+      .filter((o) => (status === "All" ? true : o.status === status))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [query, status]);
 
-  if (!session) return <AppShell title="Orders"><div className="surface-card p-4">Sign in to view your saved orders. <Link to="/login" className="text-primary underline">Sign in</Link></div></AppShell>;
+  const pendingSync = orders.filter((o) => o.sync !== "SYNCED").length;
+  const monthTotal = orders
+    .filter((o) => o.status !== "Cancelled" && o.status !== "Draft")
+    .reduce((s, o) => s + o.netTotal, 0);
 
-  return <AppShell title="Orders" subtitle="Live orders saved in your account" action={<Link to="/orders/new" className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-3 text-sm font-bold text-primary-foreground"><Plus className="h-4 w-4" /> New order</Link>}>
-    <div className="grid grid-cols-2 gap-3">
-      <StatCard label="Saved orders" value={String(rows.length)} />
-      <StatCard label="Order value" value={money(total)} />
-      <StatCard label="Pending / drafts" value={String(pending)} tone="warning" />
-      <StatCard label="Payments received" value={money(collected)} tone="success" />
-    </div>
-    <div className="relative mt-4"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search order, invoice or customer" className="h-11 w-full rounded-xl border border-input bg-card pl-9 pr-3 text-sm" /></div>
-    <div className="mt-3 flex gap-2 overflow-x-auto pb-1">{statuses.map(s=><button key={s} onClick={()=>setStatus(s)} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${status===s?"border-primary bg-primary text-primary-foreground":"border-border bg-card text-muted-foreground"}`}>{s}</button>)}</div>
-    <SectionTitle right={<button onClick={()=>void ordersQuery.refetch()} className="text-xs text-primary"><RefreshCw className="mr-1 inline h-3 w-3" />Refresh</button>}>Saved orders <span className="ml-1 text-xs font-normal text-muted-foreground">{list.length}</span></SectionTitle>
-    {ordersQuery.isLoading ? <div className="grid place-items-center py-10"><Loader2 className="h-6 w-6 animate-spin" /></div> : ordersQuery.error ? <div className="surface-card p-4 text-sm text-destructive">Could not load orders: {(ordersQuery.error as Error).message}</div> : list.length===0 ? <EmptyState title="No saved orders" hint="Orders you create will appear here. No example orders are shown." /> : <ul className="space-y-3">{list.map(o=><li key={o.id} className="surface-card p-4">
-      <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-semibold">{o.customer_name}</p><p className="mt-0.5 text-xs text-muted-foreground">{o.order_no} · {shortDate(o.created_at)}</p>{o.invoice_no?<p className="text-xs text-muted-foreground">Invoice {o.invoice_no}</p>:null}</div><Pill tone={tone(o.status)}>{o.status}</Pill></div>
-      <div className="mt-3 flex items-end justify-between border-t border-border pt-3"><div><p className="text-xs text-muted-foreground">Received {money(Number(o.payment_received||0))}</p><p className="text-xs text-muted-foreground">Balance {money(Math.max(0,Number(o.total||0)-Number(o.payment_received||0)))}</p></div><p className="num text-lg font-bold">{money(Number(o.total||0))}</p></div>
-    </li>)}</ul>}
-  </AppShell>;
+  return (
+    <AppShell
+      title="Orders"
+      subtitle={`${orders.length} orders this month`}
+      action={
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-foreground/50" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Order no, invoice, customer"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/10 pl-9 pr-3 text-sm text-navy-foreground placeholder:text-navy-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
+      }
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label="Month Sales" value={money(monthTotal)} hint="Confirmed & completed" />
+        <StatCard
+          label="Waiting to sync"
+          value={`${pendingSync} orders`}
+          hint={pendingSync ? "Will sync automatically" : "All data synchronized."}
+          tone={pendingSync ? "warning" : "success"}
+        />
+      </div>
+
+      <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
+        {statuses.map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatus(s)}
+            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+              status === s
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card text-muted-foreground"
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      <SectionTitle right={<span className="text-xs text-muted-foreground">{list.length} shown</span>}>
+        Order list
+      </SectionTitle>
+
+      {list.length === 0 ? (
+        <EmptyState title="No orders match" hint="Adjust the filters or search term." />
+      ) : (
+        <ul className="space-y-3">
+          {list.map((o) => {
+            const balance = o.netTotal - o.payment;
+            const SyncIcon =
+              o.sync === "SYNCED" ? CheckCircle2 : o.sync === "PENDING SYNC" ? CloudUpload : CloudOff;
+            return (
+              <li key={o.id} className="surface-card p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{o.id}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {shortDate(o.date)} · {o.customerName}
+                    </p>
+                  </div>
+                  <Pill tone={statusTone(o.status)}>{o.status}</Pill>
+                </div>
+
+                <div className="num mt-3 grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Total</p>
+                    <p className="font-semibold">{money(o.netTotal)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Payment</p>
+                    <p className="font-semibold text-success">{money(o.payment)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Balance</p>
+                    <p className="font-semibold text-destructive">{money(balance)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2.5">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                    <SyncIcon
+                      className={`h-3.5 w-3.5 ${o.sync === "SYNCED" ? "text-success" : "text-warning"}`}
+                    />
+                    {o.sync}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">{o.invoiceId}</span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <Link
+        to="/orders/new"
+        className="fixed bottom-20 right-4 z-40 inline-flex h-14 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-primary-foreground shadow-lg"
+      >
+        <Plus className="h-5 w-5" /> New Order
+      </Link>
+    </AppShell>
+  );
 }

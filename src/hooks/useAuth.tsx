@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { isRecoveryHash } from "@/lib/password-recovery";
 
 export type AppRole = "admin" | "sales_rep" | "accountant";
 
@@ -22,6 +23,8 @@ type AuthState = {
   roles: AppRole[];
   isAdmin: boolean;
   isApproved: boolean;
+  isRecovery: boolean;
+  finishRecovery: () => void;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -33,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
+  const [isRecovery, setIsRecovery] = useState(false);
 
   async function loadUserData(userId: string | undefined) {
     if (!userId) {
@@ -54,9 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    if (isRecoveryHash(window.location.hash)) setIsRecovery(true);
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
+      if (event === "PASSWORD_RECOVERY") setIsRecovery(true);
+      if (event === "SIGNED_OUT") setIsRecovery(false);
       setSession(nextSession);
       // Avoid awaiting supabase calls inside the callback.
       setTimeout(() => {
@@ -88,6 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roles,
       isAdmin,
       isApproved: isAdmin || profile?.status === "active",
+      isRecovery,
+      finishRecovery: () => setIsRecovery(false),
       refresh: async () => {
         await loadUserData(session?.user?.id);
       },
@@ -97,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRoles([]);
       },
     };
-  }, [loading, session, profile, roles]);
+  }, [loading, session, profile, roles, isRecovery]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

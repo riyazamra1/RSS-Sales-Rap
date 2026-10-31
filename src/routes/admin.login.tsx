@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { ForgotPassword } from "@/components/ForgotPassword";
 
 export const Route = createFileRoute("/admin/login")({
   head: () => ({
@@ -14,6 +15,8 @@ export const Route = createFileRoute("/admin/login")({
           "Administrator sign in for the RSS Sales Manager control panel: approve sales reps, manage roles and review collections.",
       },
       { property: "og:title", content: "Admin login — RSS Sales Manager" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Restricted administrator access to the RSS Sales Manager control panel.",
@@ -28,27 +31,6 @@ function AdminLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [resetBusy, setResetBusy] = useState(false);
-
-  async function onForgotPassword() {
-    const address = email.trim();
-    if (!address) {
-      toast.error("Enter your admin email address first.");
-      return;
-    }
-    if (resetBusy) return;
-    setResetBusy(true);
-    const appBase = window.location.pathname.startsWith("/SalesManager") ? "/SalesManager" : "";
-    const { error } = await supabase.auth.resetPasswordForEmail(address, {
-      redirectTo: `${window.location.origin}${appBase}/reset-password`,
-    });
-    setResetBusy(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success("If an account exists for this email, a password reset link will be sent.");
-  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -126,16 +108,6 @@ function AdminLoginPage() {
               className="h-12 w-full rounded-xl border border-white/10 bg-white/10 px-3.5 text-sm text-navy-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => void onForgotPassword()}
-              disabled={resetBusy}
-              className="text-xs font-semibold text-primary underline-offset-4 hover:underline disabled:opacity-60"
-            >
-              {resetBusy ? "Sending reset link…" : "Forgot password?"}
-            </button>
-          </div>
           <button
             type="submit"
             disabled={busy}
@@ -144,6 +116,7 @@ function AdminLoginPage() {
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} ENTER ADMIN PANEL
           </button>
         </form>
+        <ForgotPassword initialEmail={email} />
 
         <p className="mt-6 text-center text-sm">
           <Link to="/login" className="font-semibold text-navy-foreground/80">
