@@ -5,10 +5,10 @@ Both `/login` and `/admin/login` offer **Forgot password?**. Reset links return 
 
 The current Lovable-hosted app's return addresses are configured. Before hosting elsewhere, add the new address under **More → Users → Auth settings → Advanced → Redirect URLs**. A recovery link must be tested on the actual deployed address.
 
-## Requested address: https://rssapps.net/SalesManager
-This address is not deployed or connected by this source package. Domain/DNS or hosting access is required. Lovable custom-domain connections use hostnames, not a `/SalesManager` subfolder.
+## Production subpath: https://rssapps.net/SalesManager/
+The app is configured for the `/SalesManager/` base path in Vite, TanStack Router and the PWA manifest. The Cloudflare server entry also normalizes requests for known static assets (`/assets/*`, icons, favicon and manifest) so they resolve whether the Cloudflare asset binding exposes them at the origin root or under the app prefix. Application routes and server-function requests retain the `/SalesManager` prefix.
 
-The current app assumes domain-root hosting. For an exact subpath deployment, configure the server runtime, router base path, asset paths, manifest start URL and scope, and password-recovery return URL together, then verify deep links and server functions. Do not simply upload a static folder to `/SalesManager`; Google Sheets sync uses server functions. An alternative is a dedicated app subdomain, with `/SalesManager` redirecting to it, if approved by the owner.
+The production deployment must use the `rssapps.net/SalesManager*` Cloudflare Worker route and the current Worker deployment. Verify the HTML, stylesheet, JavaScript chunks, manifest, deep links and server functions on the production hostname after each deployment. A successful build or Worker upload alone does not prove that the public route is serving every asset. Google Sheets sync uses server functions and requires the configured production connector credentials.
 
 ## Functionality boundaries
 - Authentication, admin approvals, customer creation, item creation and standalone payment receipts have backend implementations.
