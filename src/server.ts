@@ -7,6 +7,8 @@ type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
 
+const APP_BASE_PATH = "/SalesManager";
+
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
 async function getServerEntry(): Promise<ServerEntry> {
@@ -16,6 +18,34 @@ async function getServerEntry(): Promise<ServerEntry> {
     );
   }
   return serverEntryPromise;
+}
+
+/**
+ * Vite emits the app's CSS/JS and public files below /SalesManager, while
+ * Nitro's Cloudflare asset binding can expose the same files from the origin
+ * root. Resolve those known static paths against the root first, then retain
+ * the prefixed request as a fallback for hosts that preserve the subpath.
+ *
+ * Never rewrite application routes or server-function requests: TanStack
+ * Router and the Start server need to see the configured /SalesManager base.
+ */
+function isSubpathStaticAsset(pathname: string): boolean {
+  if (!pathname.startsWith(`${APP_BASE_PATH}/`)) return false;
+
+  const assetPath = pathname.slice(APP_BASE_PATH.length);
+  return (
+    assetPath.startsWith("/assets/") ||
+    assetPath.startsWith("/icons/") ||
+    assetPath === "/favicon.png" ||
+    assetPath === "/manifest.webmanifest" ||
+    assetPath === "/robots.txt"
+  );
+}
+
+function withoutAppBasePath(request: Request): Request {
+  const url = new URL(request.url);
+  url.pathname = url.pathname.slice(APP_BASE_PATH.length) || "/";
+  return new Request(url, request);
 }
 
 // h3 swallows in-handler throws into a normal 500 Response with body
@@ -48,7 +78,17 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+      let response: Response;
+
+      if (isSubpathStaticAsset(new URL(request.url).pathname)) {
+        response = await handler.fetch(withoutAppBasePath(request), env, ctx);
+        if (response.status === 404) {
+          response = await handler.fetch(request, env, ctx);
+        }
+      } else {
+        response = await handler.fetch(request, env, ctx);
+      }
+
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
