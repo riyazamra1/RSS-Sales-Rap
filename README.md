@@ -49,6 +49,7 @@ bun run build
 ```
 
 ## Build with Lovable
+See [DEPLOYMENT.md](DEPLOYMENT.md) for password recovery, external hosting requirements and current functionality boundaries.
 
 Open your project in the [Lovable editor](https://lovable.dev) and keep building.
 
