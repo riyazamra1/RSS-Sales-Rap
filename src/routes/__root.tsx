@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-router";
 import { lazy, useEffect, type ReactNode } from "react";
 
-import appCss from "../styles.css?url";
+import appCss from "../styles.css?inline";
 import { Toaster } from "@/components/ui/sonner";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
@@ -112,7 +112,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
-      { rel: "stylesheet", href: appCss },
       { rel: "icon", type: "image/png", href: `${import.meta.env.BASE_URL}favicon.png` },
       { rel: "apple-touch-icon", href: `${import.meta.env.BASE_URL}icons/app-icon.png` },
       { rel: "manifest", href: `${import.meta.env.BASE_URL}manifest.webmanifest` },
@@ -135,6 +134,9 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        {/* Inline the compiled app stylesheet so production styling does not
+            depend on a separately routed /SalesManager/assets/*.css request. */}
+        <style>{appCss}</style>
       </head>
       <body>
         {children}
@@ -177,4 +179,3 @@ function RecoveryRedirect() {
   }, [isRecovery, location.pathname, navigate]);
   return null;
 }
-
